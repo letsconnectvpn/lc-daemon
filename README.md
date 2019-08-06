@@ -103,8 +103,8 @@ commands then, i.e. `setup` and `teardown`.
 2. Implement `kill`
 3. Implement connecting to multiple OpenVPN processes in parallel
 4. Implement daemon and listen on TCP socket and handle commands from daemon
-5. Aggregate feedback from the various OpenVPN managements ports
-6. Implement `status`
+5. Implement `status`
+6. Implement TLS
 
 ## Daemon API
 
