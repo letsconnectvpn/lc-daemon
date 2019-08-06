@@ -157,3 +157,24 @@ Response:
 ### Quit
 
     QUIT
+
+## Build & Run
+
+    $ go build socket.go
+    $ ./socket
+
+Or 
+
+    $ go run socket.go
+
+On can then telnet to port `8080`, and issue commands:
+
+    $ telnet localhost 8080
+    Trying ::1...
+    Connected to localhost.
+    Escape character is '^]'.
+    SET OPENVPN_MANAGEMENT_PORT_LIST 11940 11941
+    DISCONNECT foo
+    0
+    Connection closed by foreign host.
+    
