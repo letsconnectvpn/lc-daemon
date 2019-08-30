@@ -75,6 +75,7 @@ Some potential issues:
 2. The portal MUST be authoritative and be "eventually consistent" with the 
    data the node(s) have. We want to avoid the need to deal with "conflicts", 
    e.g. the portal disagrees with the node(s);
+3. what to do when the node(s) is/are down? waiting for time-out is not great
 
 There may be many more issues, or possible solutions. This seems like a 
 start...
