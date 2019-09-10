@@ -71,6 +71,8 @@ func handleConnection(conn net.Conn) {
 				intPort, _ := strconv.Atoi(port)
 				intPortList = append(intPortList, intPort)
 			}
+
+			continue
 		}
 		if 0 == strings.Index(msg, "DISCONNECT") {
 			if len(msg) > 13 {
@@ -104,6 +106,8 @@ func handleConnection(conn net.Conn) {
 				writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
 				writer.Flush()
 			}
+
+			continue
 		}
 
 		if 0 == strings.Index(msg, "LIST") {
@@ -128,11 +132,16 @@ func handleConnection(conn net.Conn) {
 			for x := range c {
 				fmt.Println(x)
 			}
+
+			continue
 		}
 
 		if 0 == strings.Index(msg, "QUIT") {
 			return
 		}
+
+		writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
+		writer.Flush()
 	}
 }
 
