@@ -160,12 +160,15 @@ Response:
 
 ## Build & Run
 
-    $ go build socket.go
-    $ ./socket
+    $ go build _bin/lc-daemon lc-daemon/main.go
 
-Or 
+Or use the `Makefile`:
 
-    $ go run socket.go
+	$ make
+
+## Run
+
+    $ _bin/lc-daemon
 
 On can then telnet to port `8080`, and issue commands:
 
