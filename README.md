@@ -160,7 +160,7 @@ Response:
 
 ## Build & Run
 
-    $ go build _bin/lc-daemon lc-daemon/main.go
+    $ go build -o _bin/lc-daemon lc-daemon/main.go
 
 Or use the `Makefile`:
 
