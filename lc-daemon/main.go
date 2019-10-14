@@ -39,8 +39,6 @@ import (
 	"sync"
 )
 
-var wg sync.WaitGroup
-
 func main() {
 
 	ln, err := net.Listen("tcp", ":8080")
@@ -76,20 +74,22 @@ func handleConnection(conn net.Conn) {
 
 			continue
 		}
+
 		if 0 == strings.Index(msg, "DISCONNECT") {
 			if len(msg) > 13 {
 				// we don't want to \n otherwise we could use msg[11:]
 				commonName = msg[11 : len(msg)-2]
 
 				c := make(chan bool, len(intPortList))
+				var wgDisc sync.WaitGroup
 
 				for _, p := range intPortList {
-					wg.Add(1)
-					go disconnectClient(c, p, commonName)
+					wgDisc.Add(1)
+					go disconnectClient(c, p, commonName, &wgDisc)
 				}
 
 				// wait for all routines to finish...
-				wg.Wait()
+				wgDisc.Wait()
 
 				// close channel, we do not expect any data anymore, this is needed
 				// because otherwise "range c" below is still waiting for more data on the
@@ -117,14 +117,15 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("LIST")
 
 			c := make(chan []string, len(intPortList))
+			var wgList sync.WaitGroup
 
 			for _, p := range intPortList {
-				wg.Add(1)
-				go obtainStatus(c, p)
+				wgList.Add(1)
+				go obtainStatus(c, p, &wgList)
 			}
 
 			// wait for all routines to finish...
-			wg.Wait()
+			wgList.Wait()
 
 			// close channel, we do not expect any data anymore, this is needed
 			// because otherwise "range c" below is still waiting for more data on the
@@ -147,7 +148,7 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func disconnectClient(c chan bool, p int, commonName string) {
+func disconnectClient(c chan bool, p int, commonName string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
@@ -187,7 +188,7 @@ func disconnectClient(c chan bool, p int, commonName string) {
 	fmt.Fprintf(conn, "quit\n")
 }
 
-func obtainStatus(c chan []string, p int) {
+func obtainStatus(c chan []string, p int, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
