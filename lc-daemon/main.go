@@ -30,12 +30,14 @@
  */
 package main
 
-import "net"
-import "fmt"
-import "bufio"
-import "strings"
-import "sync"
-import "strconv"
+import (
+	"bufio"
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
+	"sync"
+)
 
 var wg sync.WaitGroup
 
