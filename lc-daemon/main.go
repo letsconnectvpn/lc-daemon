@@ -114,8 +114,6 @@ func handleConnection(conn net.Conn) {
 
 		if 0 == strings.Index(msg, "LIST") {
 
-			fmt.Println("LIST")
-
 			c := make(chan []string, len(intPortList))
 			var wgList sync.WaitGroup
 
@@ -133,8 +131,15 @@ func handleConnection(conn net.Conn) {
 			close(c)
 
 			for x := range c {
-				fmt.Println(x)
+				if x != nil {
+					//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
+					//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
+					//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Conntected Since (time_t)}
+					//x[9] = {Username}					x[10]= {Client ID}					x[11]= {Peer ID}
+					writer.WriteString(fmt.Sprintf("%s %s %s\n", x[1], x[3], x[4]))
+				}
 			}
+			writer.Flush()
 
 			continue
 		}
@@ -194,40 +199,31 @@ func obtainStatus(c chan []string, p int, wg *sync.WaitGroup) {
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 	if err != nil {
 		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to disconnect clients there ;-)
+		// so no need to retrieve clients there ;-)
 		c <- nil
 		return
 	}
 
 	defer conn.Close()
 
-	// turn off live OpenVPN log that can confuse our output parsing
-	fmt.Fprintf(conn, fmt.Sprint("log off\n"))
-
 	reader := bufio.NewReader(conn)
-	// we need to remove everything that's currently in the buffer waiting to
-	// be read. We are not interested in it at all, we only care about the
-	// response to our commands hereafter...
-	// XXX there should be a one-liner that can fix this, right?
-	txt, _ := reader.ReadString('\n')
-	for 0 != strings.Index(txt, "END") && 0 != strings.Index(txt, "SUCCESS") && 0 != strings.Index(txt, "ERROR") {
-		txt, _ = reader.ReadString('\n')
-	}
 
-	// disconnect the client
+	// send status command to OpenVPN management interface
 	fmt.Fprintf(conn, "status 2\n")
 	text, _ := reader.ReadString('\n')
 	for 0 != strings.Index(text, "CLIENT_LIST") {
 		// walk until we find CLIENT_LIST
-		text, _ = reader.ReadString('\n')
+		// exit loop if no clients are found -> if not inf loop searching for "CLIENT_LIST"
+		if 0 != strings.Index(text, "END") {
+			text, _ = reader.ReadString('\n')
+		} else {
+			break
+		}
 	}
 
 	for 0 == strings.Index(text, "CLIENT_LIST") {
 		strList := strings.Split(text, ",")
 		c <- strList
+		text, _ = reader.ReadString('\n')
 	}
-
-	// XXX maybe it is easier to just close the connection, who cares about
-	// quit?
-	fmt.Fprintf(conn, "quit\n")
 }
