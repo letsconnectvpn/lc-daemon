@@ -214,11 +214,10 @@ func obtainStatus(c chan []string, p int, wg *sync.WaitGroup) {
 	for 0 != strings.Index(text, "CLIENT_LIST") {
 		// walk until we find CLIENT_LIST
 		// exit loop if no clients are found -> if not inf loop searching for "CLIENT_LIST"
-		if 0 != strings.Index(text, "END") {
-			text, _ = reader.ReadString('\n')
-		} else {
+		if 0 == strings.Index(text, "END") {
 			break
 		}
+		text, _ = reader.ReadString('\n')
 	}
 
 	for 0 == strings.Index(text, "CLIENT_LIST") {
