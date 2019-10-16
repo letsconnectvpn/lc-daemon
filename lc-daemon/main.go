@@ -114,7 +114,12 @@ func handleConnection(conn net.Conn) {
 
 		if 0 == strings.Index(msg, "LIST") {
 
-			c := make(chan []string, len(intPortList))
+			//prevent connection getting stuck, wait for next line
+			if len(intPortList) == 0 {
+				continue
+			}
+
+			c := make(chan []string, 9999)
 			var wgList sync.WaitGroup
 
 			for _, p := range intPortList {
