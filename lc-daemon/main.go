@@ -142,12 +142,20 @@ func handleConnection(conn net.Conn) {
 			// channel...
 			close(c)
 
+			connectionCount := 0
+			rtnConnList := make([]string, 0)
 			for x := range c {
 				if x != nil {
 					for _, connection := range x {
-						writer.WriteString(fmt.Sprintf("%s %s %s\n", connection.commonName, connection.virtualIPv4, connection.virtualIPv6))
+						connectionCount++
+						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s", connection.commonName, connection.virtualIPv4, connection.virtualIPv6))
 					}
 				}
+			}
+
+			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
+			for _, val := range rtnConnList {
+				writer.WriteString(fmt.Sprintf("%s\n", val))
 			}
 			writer.Flush()
 
