@@ -125,6 +125,12 @@ of the format:
 Where `n` is the number of rows the response contains. This is an integer >= 0. 
 See the examples below.
 
+If a command is not supported, or a command fails the response starts with 
+`ERR`, e.g.:
+
+    FOO
+    ERR: NOT_SUPPORTED
+
 ### Setup
 
 As we want to go for "zero configuration", we want the portal to specify which
