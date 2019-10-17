@@ -225,9 +225,13 @@ func obtainStatus(c chan []string, p int, wg *sync.WaitGroup) {
 		text, _ = reader.ReadString('\n')
 	}
 
-	for 0 == strings.Index(text, "CLIENT_LIST") {
-		strList := strings.Split(text, ",")
-		c <- strList
+	//can continue to iterate through the msg till END is found
+	//can continue even when interleaving msgs are present
+	for 0 != strings.Index(text, "END") {
+		if 0 == strings.Index(text, "CLIENT_LIST") {
+			strList := strings.Split(text, ",")
+			c <- strList
+		}
 		text, _ = reader.ReadString('\n')
 	}
 }
