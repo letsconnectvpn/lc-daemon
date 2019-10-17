@@ -39,6 +39,13 @@ import (
 	"sync"
 )
 
+//struct used in LIST
+type connectionInfo struct {
+	commonName  string
+	virtualIPv4 string
+	virtualIPv6 string
+}
+
 func main() {
 
 	ln, err := net.Listen("tcp", ":8080")
@@ -119,7 +126,7 @@ func handleConnection(conn net.Conn) {
 				continue
 			}
 
-			c := make(chan []string, 9999)
+			c := make(chan []*connectionInfo, len(intPortList))
 			var wgList sync.WaitGroup
 
 			for _, p := range intPortList {
@@ -137,11 +144,9 @@ func handleConnection(conn net.Conn) {
 
 			for x := range c {
 				if x != nil {
-					//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
-					//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
-					//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Conntected Since (time_t)}
-					//x[9] = {Username}					x[10]= {Client ID}					x[11]= {Peer ID}
-					writer.WriteString(fmt.Sprintf("%s %s %s\n", x[1], x[3], x[4]))
+					for _, connection := range x {
+						writer.WriteString(fmt.Sprintf("%s %s %s\n", connection.commonName, connection.virtualIPv4, connection.virtualIPv6))
+					}
 				}
 			}
 			writer.Flush()
@@ -198,7 +203,7 @@ func disconnectClient(c chan bool, p int, commonName string, wg *sync.WaitGroup)
 	fmt.Fprintf(conn, "quit\n")
 }
 
-func obtainStatus(c chan []string, p int, wg *sync.WaitGroup) {
+func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
@@ -225,13 +230,21 @@ func obtainStatus(c chan []string, p int, wg *sync.WaitGroup) {
 		text, _ = reader.ReadString('\n')
 	}
 
+	connections := make([]*connectionInfo, 0)
 	//can continue to iterate through the msg till END is found
 	//can continue even when interleaving msgs are present
 	for 0 != strings.Index(text, "END") {
 		if 0 == strings.Index(text, "CLIENT_LIST") {
 			strList := strings.Split(text, ",")
-			c <- strList
+			//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
+			//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
+			//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Connetected Since (time_t)}
+			//x[9] = {Username}					x[10]= {Client ID}					x[11]= {Peer ID}
+			newConnection := connectionInfo{strList[1], strList[3], strList[4]}
+			connections = append(connections, &newConnection)
 		}
 		text, _ = reader.ReadString('\n')
 	}
+
+	c <- connections
 }
