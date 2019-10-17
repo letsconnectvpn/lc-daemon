@@ -126,6 +126,8 @@ func handleConnection(conn net.Conn) {
 
 			//prevent connection getting stuck, wait for next line
 			if len(intPortList) == 0 {
+				writer.WriteString(fmt.Sprintf("OK: 0\n"))
+				writer.Flush()
 				continue
 			}
 
