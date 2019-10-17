@@ -73,11 +73,14 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, _ := reader.ReadString('\n')
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
-			portList := strings.Split(msg[33:len(msg)-2], " ")
+			portList := strings.Fields(msg[33 : len(msg)-2])
 			for _, port := range portList {
-				intPort, _ := strconv.Atoi(port)
-				intPortList = append(intPortList, intPort)
+				if intPort, err := strconv.Atoi(port); err == nil {
+					intPortList = append(intPortList, intPort)
+				}
 			}
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			writer.Flush()
 
 			continue
 		}
