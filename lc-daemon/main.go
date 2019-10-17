@@ -39,6 +39,13 @@ import (
 	"sync"
 )
 
+//struct used in LIST
+type connectionInfo struct {
+	commonName  string
+	virtualIPv4 string
+	virtualIPv6 string
+}
+
 func main() {
 
 	ln, err := net.Listen("tcp", ":8080")
@@ -66,11 +73,14 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, _ := reader.ReadString('\n')
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
-			portList := strings.Split(msg[33:len(msg)-2], " ")
+			portList := strings.Fields(msg[33 : len(msg)-2])
 			for _, port := range portList {
-				intPort, _ := strconv.Atoi(port)
-				intPortList = append(intPortList, intPort)
+				if intPort, err := strconv.Atoi(port); err == nil {
+					intPortList = append(intPortList, intPort)
+				}
 			}
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			writer.Flush()
 
 			continue
 		}
@@ -114,9 +124,12 @@ func handleConnection(conn net.Conn) {
 
 		if 0 == strings.Index(msg, "LIST") {
 
-			fmt.Println("LIST")
+			//prevent connection getting stuck, wait for next line
+			if len(intPortList) == 0 {
+				continue
+			}
 
-			c := make(chan []string, len(intPortList))
+			c := make(chan []*connectionInfo, len(intPortList))
 			var wgList sync.WaitGroup
 
 			for _, p := range intPortList {
@@ -132,9 +145,22 @@ func handleConnection(conn net.Conn) {
 			// channel...
 			close(c)
 
+			connectionCount := 0
+			rtnConnList := make([]string, 0)
 			for x := range c {
-				fmt.Println(x)
+				if x != nil {
+					for _, connection := range x {
+						connectionCount++
+						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s", connection.commonName, connection.virtualIPv4, connection.virtualIPv6))
+					}
+				}
 			}
+
+			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
+			for _, val := range rtnConnList {
+				writer.WriteString(fmt.Sprintf("%s\n", val))
+			}
+			writer.Flush()
 
 			continue
 		}
@@ -188,46 +214,48 @@ func disconnectClient(c chan bool, p int, commonName string, wg *sync.WaitGroup)
 	fmt.Fprintf(conn, "quit\n")
 }
 
-func obtainStatus(c chan []string, p int, wg *sync.WaitGroup) {
+func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 	if err != nil {
 		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to disconnect clients there ;-)
+		// so no need to retrieve clients there ;-)
 		c <- nil
 		return
 	}
 
 	defer conn.Close()
 
-	// turn off live OpenVPN log that can confuse our output parsing
-	fmt.Fprintf(conn, fmt.Sprint("log off\n"))
-
 	reader := bufio.NewReader(conn)
-	// we need to remove everything that's currently in the buffer waiting to
-	// be read. We are not interested in it at all, we only care about the
-	// response to our commands hereafter...
-	// XXX there should be a one-liner that can fix this, right?
-	txt, _ := reader.ReadString('\n')
-	for 0 != strings.Index(txt, "END") && 0 != strings.Index(txt, "SUCCESS") && 0 != strings.Index(txt, "ERROR") {
-		txt, _ = reader.ReadString('\n')
-	}
 
-	// disconnect the client
+	// send status command to OpenVPN management interface
 	fmt.Fprintf(conn, "status 2\n")
 	text, _ := reader.ReadString('\n')
 	for 0 != strings.Index(text, "CLIENT_LIST") {
 		// walk until we find CLIENT_LIST
+		// exit loop if no clients are found -> if not inf loop searching for "CLIENT_LIST"
+		if 0 == strings.Index(text, "END") {
+			break
+		}
 		text, _ = reader.ReadString('\n')
 	}
 
-	for 0 == strings.Index(text, "CLIENT_LIST") {
-		strList := strings.Split(text, ",")
-		c <- strList
+	connections := make([]*connectionInfo, 0)
+	//can continue to iterate through the msg till END is found
+	//can continue even when interleaving msgs are present
+	for 0 != strings.Index(text, "END") {
+		if 0 == strings.Index(text, "CLIENT_LIST") {
+			strList := strings.Split(text, ",")
+			//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
+			//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
+			//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Connetected Since (time_t)}
+			//x[9] = {Username}					x[10]= {Client ID}					x[11]= {Peer ID}
+			newConnection := connectionInfo{strList[1], strList[3], strList[4]}
+			connections = append(connections, &newConnection)
+		}
+		text, _ = reader.ReadString('\n')
 	}
 
-	// XXX maybe it is easier to just close the connection, who cares about
-	// quit?
-	fmt.Fprintf(conn, "quit\n")
+	c <- connections
 }

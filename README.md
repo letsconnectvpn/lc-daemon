@@ -108,12 +108,35 @@ commands then, i.e. `setup` and `teardown`.
 
 ## Daemon API
 
+### Command / Response
+
+Currently 4 commands are implemented:
+
+* `SET_OPENVPN_MANAGEMENT_PORT_LIST`
+* `DISCONNECT`
+* `LIST`
+* `QUIT`
+
+The commands are given, optionally with parameters, and the response will be 
+of the format:
+    
+    OK: n
+
+Where `n` is the number of rows the response contains. This is an integer >= 0. 
+See the examples below.
+
+If a command is not supported, or a command fails the response starts with 
+`ERR`, e.g.:
+
+    FOO
+    ERR: NOT_SUPPORTED
+
 ### Setup
 
 As we want to go for "zero configuration", we want the portal to specify which
 OpenVPN management ports we want to talk to.
 
-    SET OPENVPN_MANAGEMENT_PORT_LIST 11940 11941
+    SET_OPENVPN_MANAGEMENT_PORT_LIST 11940 11941
 
 This works well for single profile VPN servers, but if there are multiple 
 profiles involved, one has to specify them all in case of `DISCONNECT`, and 
@@ -132,6 +155,7 @@ Example:
     
 Response:
 
+    OK: 1
     2
 
 In this case, 2 clients were successfully disconnected. Response can be any 
@@ -152,7 +176,9 @@ Example:
 
 Response:
 
+    OK: 2
     07d1ccc455a21c2d5ac6068d4af727ca 10.42.42.2 fd00:4242:4242:4242::1000
+    9b8acc27bec2d5beb06c78bcd464d042 10.132.193.3 fd0b:7113:df63:d03c::1001
 
 ### Quit
 
@@ -178,6 +204,6 @@ On can then telnet to port `8080`, and issue commands:
     Escape character is '^]'.
     SET OPENVPN_MANAGEMENT_PORT_LIST 11940 11941
     DISCONNECT foo
+    OK: 1
     0
-    Connection closed by foreign host.
-    
+    QUIT
