@@ -34,6 +34,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -64,7 +65,6 @@ func main() {
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	var commonName string
 	intPortList := make([]int, 0)
 
 	reader := bufio.NewReader(conn)
@@ -88,7 +88,15 @@ func handleConnection(conn net.Conn) {
 		if 0 == strings.Index(msg, "DISCONNECT") {
 			if len(msg) > 13 {
 				// we don't want to \n otherwise we could use msg[11:]
-				commonName = msg[11 : len(msg)-2]
+				commonName := msg[11 : len(msg)-2]
+
+				//parsing commonName
+				validCommonName := regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
+				if !validCommonName.MatchString(commonName) {
+					writer.WriteString(fmt.Sprintf("ERR: INVALID_PARAMETER\n"))
+					writer.Flush()
+					continue
+				}
 
 				c := make(chan bool, len(intPortList))
 				var wgDisc sync.WaitGroup
@@ -116,6 +124,9 @@ func handleConnection(conn net.Conn) {
 				}
 
 				writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
+				writer.Flush()
+			} else {
+				writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
 				writer.Flush()
 			}
 
