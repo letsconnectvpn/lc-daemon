@@ -73,15 +73,37 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, _ := reader.ReadString('\n')
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
-			portList := strings.Fields(msg[33 : len(msg)-2])
-			for _, port := range portList {
-				if intPort, err := strconv.Atoi(port); err == nil {
-					intPortList = append(intPortList, intPort)
-				}
-			}
-			writer.WriteString(fmt.Sprintf("OK: 0\n"))
-			writer.Flush()
+			if len(msg) > 35 {
+				portList := strings.Fields(msg[33 : len(msg)-2])
+				if len(portList) > 0 {
 
+					newPortList := make([]int, 0)
+
+					for _, port := range portList {
+						if intPort, err := strconv.Atoi(port); err == nil && intPort > 0 && intPort < 65536 {
+							newPortList = append(newPortList, intPort)
+						}
+					}
+
+					if len(newPortList) == len(portList) {
+						intPortList = newPortList
+						writer.WriteString(fmt.Sprintf("OK: 0\n"))
+						writer.Flush()
+						continue
+					}
+
+					writer.WriteString(fmt.Sprintf("ERR: INVALID_PARAMETER\n"))
+					writer.Flush()
+					continue
+				}
+
+				writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
+				writer.Flush()
+				continue
+			}
+
+			writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
+			writer.Flush()
 			continue
 		}
 
