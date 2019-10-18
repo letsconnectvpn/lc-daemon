@@ -32,6 +32,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"net"
 	"regexp"
@@ -48,8 +49,12 @@ type connectionInfo struct {
 }
 
 func main() {
-
-	ln, err := net.Listen("tcp", ":8080")
+	var listenHostPort = flag.String("listen", "localhost:41194", "IP:port to listen on")
+	flag.Usage = func() {
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+	ln, err := net.Listen("tcp", *listenHostPort)
 	if err != nil {
 		// handle error
 	}
