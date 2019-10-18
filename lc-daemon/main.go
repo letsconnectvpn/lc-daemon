@@ -123,6 +123,7 @@ func handleConnection(conn net.Conn) {
 					}
 				}
 
+				writer.WriteString(fmt.Sprintf("OK: 1\n"))
 				writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
 				writer.Flush()
 			} else {
