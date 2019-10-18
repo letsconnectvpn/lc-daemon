@@ -32,6 +32,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -80,32 +81,17 @@ func handleConnection(conn net.Conn) {
 			}
 
 			portList := strings.Fields(msg[33 : len(msg)-2])
-			if len(portList) > 0 {
-
-				newPortList := make([]int, 0)
-
-				for _, port := range portList {
-					if intPort, err := strconv.Atoi(port); err == nil && intPort > 0 && intPort < 65536 {
-						newPortList = append(newPortList, intPort)
-					}
-				}
-
-				if len(newPortList) == len(portList) {
-					intPortList = newPortList
-					writer.WriteString(fmt.Sprintf("OK: 0\n"))
-					writer.Flush()
-					continue
-				}
-
-				writer.WriteString(fmt.Sprintf("ERR: INVALID_PARAMETER\n"))
+			newPortList, err := parsePortList(portList)
+			if err == nil {
+				intPortList = newPortList
+				writer.WriteString(fmt.Sprintf("OK: 0\n"))
 				writer.Flush()
 				continue
 			}
 
-			writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
+			writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
 			writer.Flush()
 			continue
-
 		}
 
 		if 0 == strings.Index(msg, "DISCONNECT") {
@@ -295,4 +281,24 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	}
 
 	c <- connections
+}
+
+func parsePortList(portList []string) ([]int, error) {
+
+	newPortList := make([]int, 0)
+	if len(portList) == 0 {
+		return newPortList, errors.New("MISSING_PARAMETER")
+	}
+
+	for _, port := range portList {
+		if intPort, err := strconv.Atoi(port); err == nil && intPort > 0 && intPort < 65536 {
+			newPortList = append(newPortList, intPort)
+		}
+	}
+
+	if len(newPortList) == len(portList) {
+		return newPortList, nil
+	}
+
+	return newPortList, errors.New("INVALID_PARAMETER")
 }
