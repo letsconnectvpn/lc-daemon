@@ -80,8 +80,7 @@ func handleConnection(conn net.Conn) {
 				continue
 			}
 
-			portList := strings.Fields(msg[33 : len(msg)-2])
-			newPortList, err := parsePortList(portList)
+			newPortList, err := parsePortString(msg[33 : len(msg)-2])
 			if err == nil {
 				intPortList = newPortList
 				writer.WriteString(fmt.Sprintf("OK: 0\n"))
@@ -283,22 +282,21 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	c <- connections
 }
 
-func parsePortList(portList []string) ([]int, error) {
+func parsePortString(portString string) ([]int, error) {
 
+	portList := strings.Fields(portString)
 	newPortList := make([]int, 0)
 	if len(portList) == 0 {
 		return newPortList, errors.New("MISSING_PARAMETER")
 	}
 
 	for _, port := range portList {
-		if intPort, err := strconv.Atoi(port); err == nil && intPort > 0 && intPort < 65536 {
-			newPortList = append(newPortList, intPort)
+		intPort, err := strconv.Atoi(port)
+		if err != nil || intPort <= 0 || intPort >= 65536 {
+			return newPortList, errors.New("INVALID_PARAMETER")
 		}
+		newPortList = append(newPortList, intPort)
 	}
 
-	if len(newPortList) == len(portList) {
-		return newPortList, nil
-	}
-
-	return newPortList, errors.New("INVALID_PARAMETER")
+	return newPortList, nil
 }
