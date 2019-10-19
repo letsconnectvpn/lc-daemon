@@ -79,13 +79,7 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, _ := reader.ReadString('\n')
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
-			if len(msg) <= 35 {
-				writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
-				writer.Flush()
-				continue
-			}
-
-			newPortList, err := parsePortString(msg[33 : len(msg)-2])
+			newPortList, err := parsePortCommand(msg)
 			if err == nil {
 				intPortList = newPortList
 				writer.WriteString(fmt.Sprintf("OK: 0\n"))
@@ -287,9 +281,12 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	c <- connections
 }
 
-func parsePortString(portString string) ([]int, error) {
+func parsePortCommand(msg string) ([]int, error) {
+	if len(msg) <= 35 {
+		return nil, errors.New("MISSING_PARAMETER")
+	}
 
-	portList := strings.Fields(portString)
+	portList := strings.Fields(msg[33 : len(msg)-2])
 	newPortList := make([]int, 0)
 	if len(portList) == 0 {
 		return newPortList, errors.New("MISSING_PARAMETER")
