@@ -174,11 +174,11 @@ func handleConnection(conn net.Conn) {
 
 			connectionCount := 0
 			rtnConnList := make([]string, 0)
-			for x := range c {
-				if x != nil {
-					for _, connection := range x {
+			for connections := range c {
+				if connections != nil {
+					for _, conn := range connections {
 						connectionCount++
-						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s", connection.commonName, connection.virtualIPv4, connection.virtualIPv6))
+						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s", conn.commonName, conn.virtualIPv4, conn.virtualIPv6))
 					}
 				}
 			}
