@@ -1,15 +1,18 @@
 # VPN Daemon
 
-We want to create a simple daemon that can be queried by the Let's Connect!
-portal, hereafter called portal.
+Simple daemon that provides a TCP socket API protected by TLS as an abstraction 
+on top of the management port of (multiple) OpenVPN server process(es). The API
+exposes functionality to retrieve a list of connected VPN clients and also 
+allows for disconnecting clients.
 
 ## Why?
 
-Currently we potentially have many OpenVPN processes to manage. The portal 
-connects to every OpenVPN process directly using the OpenVPN management (TCP) 
-socket. This works fine if the OpenVPN processes and the portal run on the same 
-machine. If both the portal and OpenVPN processes run on different hosts this 
-is less than ideal for security, performance and reliability reasons.
+On the VPN server we need to manage multiple OpenVPN processes. Each OpenVPN 
+process exposes it management interface through a (TCP) socket. This works fine 
+if when the OpenVPN processes and the VPN portal run on the same machine. If 
+both the portal and OpenVPN processes run on different hosts this is not 
+secure as there is no TLS, and inefficient, i.e. we have to query all OpenVPN 
+management ports over the network.
 
 Currently, when using multiple hosts, one MUST have a secure channel between
 the nodes, which is something we do not want to require. A simple TLS channel 
@@ -22,23 +25,23 @@ except the portal will talk to only one socket, protected using TLS.
 
 What we want to build is a simple daemon that runs on the same node as the 
 OpenVPN processes and is reachable over a TCP socket protected by TLS. The 
-daemon will then take care of contacting the OpenVPN processes and execute the 
-commands. We want to make this "configuration-less", i.e. the daemon should 
-require no configuration.
+daemon will then take care of contacting the OpenVPN processes through their 
+local management ports and execute the commands. We want to make this 
+"configuration-less", i.e. the daemon should require no additional 
+configuration.
 
-Currently there are two commands used to talk to OpenVPN: `status` and `kill` 
-where `status` returns a list of connected clients, and `kill` disconnects a
-client.
+Currently there are two commands used over the OpenVPN management connection: 
+`status` and `kill` where `status` returns a list of connected clients, and 
+`kill` disconnects a client.
 
-In a default installation Let's Connect! has two OpenVPN processes, so the 
+In a default installation our VPN server has two OpenVPN processes, so the 
 daemon will need to talk to both OpenVPN processes. The portal can just talk to 
 the daemon and issues a command there. The results will be merged by the 
 daemon. 
 
-In addition: we can create a (much) cleaner API then the one used by OpenVPN 
-and abstract the CSV format of the `status` command in something more modern,
-e.g. JSON or maybe even protobuf. Initially it will just be a simple text 
-format.
+Furthermore, we can simplify the API uses to retrieve the list of connected 
+clients and disconnect clients. We will only expose what we explicitly use 
+and need, nothing more.
 
 ## Before
 
@@ -88,7 +91,8 @@ The daemon will be written in Go, which can handle connections to the OpenVPN
 management port concurrently. It doesn't have to do one after the other as is
 currently the case. This may improve performance.
 
-We can use TLS with a daemon. Go makes this easy to do securely (hopefully).
+We can use TLS with the daemon and require TLS client certificate 
+authentication. 
 
 The parsing of the OpenVPN "legacy" protocol and merging of the 
 information can be done by the daemon.
