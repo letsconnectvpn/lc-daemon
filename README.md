@@ -196,9 +196,9 @@ Or use the `Makefile`:
 
     $ _bin/lc-daemon
 
-On can then telnet to port `8080`, and issue commands:
+On can then telnet to port `41194`, and issue commands:
 
-    $ telnet localhost 8080
+    $ telnet localhost 41194
     Trying ::1...
     Connected to localhost.
     Escape character is '^]'.
@@ -207,3 +207,8 @@ On can then telnet to port `8080`, and issue commands:
     OK: 1
     0
     QUIT
+
+By default the daemon listens on `localhost:41194`. If you want to modify this
+you can specify the `-listen` option to change this, e.g.:
+
+    $ _bin/lc-daemon -listen 192.168.122.1:41194
