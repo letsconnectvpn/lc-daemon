@@ -287,17 +287,17 @@ func parsePortCommand(msg string) ([]int, error) {
 	}
 
 	portList := strings.Fields(msg[33 : len(msg)-2])
-	newPortList := make([]int, 0)
 	if len(portList) == 0 {
-		return newPortList, errors.New("MISSING_PARAMETER")
+		return nil, errors.New("MISSING_PARAMETER")
 	}
 
+	newPortList := make([]int, 0)
 	for _, port := range portList {
-		intPort, err := strconv.Atoi(port)
-		if err != nil || intPort <= 0 || intPort >= 65536 {
-			return newPortList, errors.New("INVALID_PARAMETER")
+		intPort, err := strconv.ParseUint(port, 10, 16)
+		if err != nil {
+			return nil, errors.New("INVALID_PARAMETER")
 		}
-		newPortList = append(newPortList, intPort)
+		newPortList = append(newPortList, int(intPort))
 	}
 
 	return newPortList, nil
