@@ -32,6 +32,8 @@ package main
 
 import (
 	"bufio"
+	"errors"
+	"flag"
 	"fmt"
 	"net"
 	"regexp"
@@ -48,8 +50,12 @@ type connectionInfo struct {
 }
 
 func main() {
-
-	ln, err := net.Listen("tcp", ":8080")
+	var listenHostPort = flag.String("listen", "localhost:41194", "IP:port to listen on")
+	flag.Usage = func() {
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+	ln, err := net.Listen("tcp", *listenHostPort)
 	if err != nil {
 		// handle error
 	}
@@ -73,15 +79,22 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, _ := reader.ReadString('\n')
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
-			portList := strings.Fields(msg[33 : len(msg)-2])
-			for _, port := range portList {
-				if intPort, err := strconv.Atoi(port); err == nil {
-					intPortList = append(intPortList, intPort)
-				}
+			if len(msg) <= 35 {
+				writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
+				writer.Flush()
+				continue
 			}
-			writer.WriteString(fmt.Sprintf("OK: 0\n"))
-			writer.Flush()
 
+			newPortList, err := parsePortString(msg[33 : len(msg)-2])
+			if err == nil {
+				intPortList = newPortList
+				writer.WriteString(fmt.Sprintf("OK: 0\n"))
+				writer.Flush()
+				continue
+			}
+
+			writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+			writer.Flush()
 			continue
 		}
 
@@ -272,4 +285,23 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	}
 
 	c <- connections
+}
+
+func parsePortString(portString string) ([]int, error) {
+
+	portList := strings.Fields(portString)
+	newPortList := make([]int, 0)
+	if len(portList) == 0 {
+		return newPortList, errors.New("MISSING_PARAMETER")
+	}
+
+	for _, port := range portList {
+		intPort, err := strconv.Atoi(port)
+		if err != nil || intPort <= 0 || intPort >= 65536 {
+			return newPortList, errors.New("INVALID_PARAMETER")
+		}
+		newPortList = append(newPortList, intPort)
+	}
+
+	return newPortList, nil
 }
