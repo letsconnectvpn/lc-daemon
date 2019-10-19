@@ -178,14 +178,14 @@ func handleConnection(conn net.Conn) {
 				if connections != nil {
 					for _, conn := range connections {
 						connectionCount++
-						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s", conn.commonName, conn.virtualIPv4, conn.virtualIPv6))
+						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6))
 					}
 				}
 			}
 
 			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
 			for _, val := range rtnConnList {
-				writer.WriteString(fmt.Sprintf("%s\n", val))
+				writer.WriteString(val)
 			}
 			writer.Flush()
 
