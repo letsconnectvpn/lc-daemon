@@ -81,10 +81,10 @@ func handleConnection(conn net.Conn) {
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
 			newPortList, err := parsePortCommand(msg)
 			if err != nil {
-			    writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
-			    writer.Flush()
-			    continue
-            }
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+				writer.Flush()
+				continue
+			}
 
 			intPortList = newPortList
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
@@ -105,7 +105,7 @@ func handleConnection(conn net.Conn) {
 					continue
 				}
 
-				c := make(chan bool, len(intPortList))
+				c := make(chan int, len(intPortList))
 				var wgDisc sync.WaitGroup
 
 				for _, p := range intPortList {
@@ -124,10 +124,8 @@ func handleConnection(conn net.Conn) {
 				// below we basically count all the "trues" in the channel populated by the
 				// routines...
 				clientDisconnectCount := 0
-				for b := range c {
-					if b {
-						clientDisconnectCount++
-					}
+				for clientDisconnected := range c {
+					clientDisconnectCount += clientDisconnected
 				}
 
 				writer.WriteString(fmt.Sprintf("OK: 1\n"))
@@ -195,44 +193,40 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func disconnectClient(c chan bool, p int, commonName string, wg *sync.WaitGroup) {
+func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 	if err != nil {
 		// unable to connect, no matter, maybe the process is temporary away,
 		// so no need to disconnect clients there ;-)
-		c <- false
+		c <- 0
 		return
 	}
 
 	defer conn.Close()
 
-	// turn off live OpenVPN log that can confuse our output parsing
-	fmt.Fprintf(conn, fmt.Sprint("log off\n"))
-
 	reader := bufio.NewReader(conn)
-	// we need to remove everything that's currently in the buffer waiting to
-	// be read. We are not interested in it at all, we only care about the
-	// response to our commands hereafter...
-	// XXX there should be a one-liner that can fix this, right?
-	txt, _ := reader.ReadString('\n')
-	for 0 != strings.Index(txt, "END") && 0 != strings.Index(txt, "SUCCESS") && 0 != strings.Index(txt, "ERROR") {
-		txt, _ = reader.ReadString('\n')
-	}
 
 	// disconnect the client
 	fmt.Fprintf(conn, fmt.Sprintf("kill %s\n", commonName))
+
 	text, _ := reader.ReadString('\n')
-	if 0 == strings.Index(text, "SUCCESS") {
-		c <- true
-	} else {
-		c <- false
+	//in case interleaving messages does happen
+	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
+		text, _ = reader.ReadString('\n')
 	}
 
-	// XXX maybe it is easier to just close the connection, who cares about
-	// quit?
-	fmt.Fprintf(conn, "quit\n")
+	if 0 == strings.Index(text, "SUCCESS") {
+		clientString := regexp.MustCompile(`[0-9]+`).FindString(text[strings.Index(text, ","):])
+		if clientsDisconnected, err := strconv.Atoi(clientString); err == nil {
+			c <- clientsDisconnected
+			return
+		}
+		c <- 0
+		return
+	}
+	c <- 0
 }
 
 func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
