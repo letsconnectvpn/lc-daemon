@@ -167,20 +167,18 @@ func handleConnection(conn net.Conn) {
 			close(c)
 
 			connectionCount := 0
-			rtnConnList := make([]string, 0)
-			for x := range c {
-				if x != nil {
-					for _, connection := range x {
+			var rtnConnList string
+			for connections := range c {
+				if connections != nil {
+					for _, conn := range connections {
 						connectionCount++
-						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s", connection.commonName, connection.virtualIPv4, connection.virtualIPv6))
+						rtnConnList = rtnConnList + fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6)
 					}
 				}
 			}
 
 			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
-			for _, val := range rtnConnList {
-				writer.WriteString(fmt.Sprintf("%s\n", val))
-			}
+			writer.WriteString(rtnConnList)
 			writer.Flush()
 
 			continue
