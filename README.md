@@ -216,3 +216,7 @@ By default the daemon listens on `localhost:41194`. If you want to modify this
 you can specify the `-listen` option to change this, e.g.:
 
     $ _bin/lc-daemon -listen 192.168.122.1:41194
+
+## Test
+
+    $ make test
