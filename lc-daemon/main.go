@@ -57,12 +57,12 @@ func main() {
 	flag.Parse()
 	ln, err := net.Listen("tcp", *listenHostPort)
 	if err != nil {
-		// handle error
+		// XXX handle error
 	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			// handle error
+			// XXX handle error
 		}
 		go handleConnection(conn)
 	}
@@ -79,21 +79,15 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, _ := reader.ReadString('\n')
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
-			if len(msg) <= 35 {
-				writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
-				writer.Flush()
-				continue
-			}
+			newPortList, err := parsePortCommand(msg)
+			if err != nil {
+			    writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+			    writer.Flush()
+			    continue
+            }
 
-			newPortList, err := parsePortString(msg[33 : len(msg)-2])
-			if err == nil {
-				intPortList = newPortList
-				writer.WriteString(fmt.Sprintf("OK: 0\n"))
-				writer.Flush()
-				continue
-			}
-
-			writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+			intPortList = newPortList
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			continue
 		}
@@ -139,11 +133,11 @@ func handleConnection(conn net.Conn) {
 				writer.WriteString(fmt.Sprintf("OK: 1\n"))
 				writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
 				writer.Flush()
-			} else {
-				writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
-				writer.Flush()
+				continue
 			}
 
+			writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
+			writer.Flush()
 			continue
 		}
 
@@ -173,26 +167,26 @@ func handleConnection(conn net.Conn) {
 			close(c)
 
 			connectionCount := 0
-			rtnConnList := make([]string, 0)
-			for x := range c {
-				if x != nil {
-					for _, connection := range x {
+			var rtnConnList string
+			for connections := range c {
+				if connections != nil {
+					for _, conn := range connections {
 						connectionCount++
-						rtnConnList = append(rtnConnList, fmt.Sprintf("%s %s %s", connection.commonName, connection.virtualIPv4, connection.virtualIPv6))
+						rtnConnList = rtnConnList + fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6)
 					}
 				}
 			}
 
 			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
-			for _, val := range rtnConnList {
-				writer.WriteString(fmt.Sprintf("%s\n", val))
-			}
+			writer.WriteString(rtnConnList)
 			writer.Flush()
 
 			continue
 		}
 
 		if 0 == strings.Index(msg, "QUIT") {
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			writer.Flush()
 			return
 		}
 
@@ -287,20 +281,23 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	c <- connections
 }
 
-func parsePortString(portString string) ([]int, error) {
-
-	portList := strings.Fields(portString)
-	newPortList := make([]int, 0)
-	if len(portList) == 0 {
-		return newPortList, errors.New("MISSING_PARAMETER")
+func parsePortCommand(msg string) ([]int, error) {
+	if len(msg) <= 35 {
+		return nil, errors.New("MISSING_PARAMETER")
 	}
 
+	portList := strings.Fields(msg[33 : len(msg)-2])
+	if len(portList) == 0 {
+		return nil, errors.New("MISSING_PARAMETER")
+	}
+
+	newPortList := make([]int, 0)
 	for _, port := range portList {
-		intPort, err := strconv.Atoi(port)
-		if err != nil || intPort <= 0 || intPort >= 65536 {
-			return newPortList, errors.New("INVALID_PARAMETER")
+		intPort, err := strconv.ParseUint(port, 10, 16)
+		if err != nil {
+			return nil, errors.New("INVALID_PARAMETER")
 		}
-		newPortList = append(newPortList, intPort)
+		newPortList = append(newPortList, int(intPort))
 	}
 
 	return newPortList, nil
