@@ -83,6 +83,7 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
+			fmt.Println("SET_OPENVPN_MANAGEMENT_PORT_LIST")
 			newPortList, err := parsePortCommand(msg)
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
@@ -97,6 +98,8 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if 0 == strings.Index(msg, "DISCONNECT") {
+			fmt.Println("DISCONNECT")
+
 			if len(msg) > 13 {
 
 				if 0 != strings.Index(msg, "DISCONNECT ") {
@@ -151,6 +154,7 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if 0 == strings.Index(msg, "LIST") {
+			fmt.Println("LIST")
 
 			//prevent connection getting stuck, wait for next line
 			if len(intPortList) == 0 {
@@ -194,6 +198,7 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if 0 == strings.Index(msg, "QUIT") {
+			fmt.Println("QUIT")
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			return
