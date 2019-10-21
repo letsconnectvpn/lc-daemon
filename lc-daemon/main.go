@@ -139,11 +139,11 @@ func handleConnection(conn net.Conn) {
 				writer.WriteString(fmt.Sprintf("OK: 1\n"))
 				writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
 				writer.Flush()
-			} else {
-				writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
-				writer.Flush()
+				continue
 			}
 
+			writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
+			writer.Flush()
 			continue
 		}
 
