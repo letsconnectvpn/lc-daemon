@@ -244,7 +244,7 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 }
 
 func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
-	fmt.Println(fmt.Sprintf("Obtain status [%d]\n", p))
+	fmt.Println(fmt.Sprintf("Obtain status [%d]", p))
 
 	defer wg.Done()
 
@@ -300,7 +300,8 @@ func parsePortCommand(msg string) ([]int, error) {
 		return nil, errors.New("NOT_SUPPORTED")
 	}
 
-	portList := strings.Fields(msg[33 : len(msg)-2])
+	// string ends in "\n", is not trimmed, so take one character away...
+	portList := strings.Fields(msg[33 : len(msg)-1])
 	if len(portList) == 0 {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
