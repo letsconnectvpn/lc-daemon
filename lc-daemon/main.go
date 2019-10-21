@@ -81,10 +81,10 @@ func handleConnection(conn net.Conn) {
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
 			newPortList, err := parsePortCommand(msg)
 			if err != nil {
-			    writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
-			    writer.Flush()
-			    continue
-            }
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+				writer.Flush()
+				continue
+			}
 
 			intPortList = newPortList
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
@@ -94,6 +94,13 @@ func handleConnection(conn net.Conn) {
 
 		if 0 == strings.Index(msg, "DISCONNECT") {
 			if len(msg) > 13 {
+
+				if 0 != strings.Index(msg, "DISCONNECT ") {
+					writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
+					writer.Flush()
+					continue
+				}
+
 				// we don't want to \n otherwise we could use msg[11:]
 				commonName := msg[11 : len(msg)-2]
 
@@ -284,6 +291,10 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 func parsePortCommand(msg string) ([]int, error) {
 	if len(msg) <= 35 {
 		return nil, errors.New("MISSING_PARAMETER")
+	}
+
+	if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST ") {
+		return nil, errors.New("NOT_SUPPORTED")
 	}
 
 	portList := strings.Fields(msg[33 : len(msg)-2])
