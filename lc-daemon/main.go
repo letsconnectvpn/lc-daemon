@@ -244,6 +244,8 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 }
 
 func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("Obtain status [%d]\n", p))
+
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
