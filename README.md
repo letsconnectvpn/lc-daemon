@@ -116,7 +116,7 @@ commands then, i.e. `setup` and `teardown`.
 
 Currently 4 commands are implemented:
 
-* `SET_OPENVPN_MANAGEMENT_PORT_LIST`
+* `SET_PORTS`
 * `DISCONNECT`
 * `LIST`
 * `QUIT`
@@ -140,7 +140,7 @@ If a command is not supported, or a command fails the response starts with
 As we want to go for "zero configuration", we want the portal to specify which
 OpenVPN management ports we want to talk to.
 
-    SET_OPENVPN_MANAGEMENT_PORT_LIST 11940 11941
+    SET_PORTS 11940 11941
 
 This works well for single profile VPN servers, but if there are multiple 
 profiles involved, one has to specify them all in case of `DISCONNECT`, and 
