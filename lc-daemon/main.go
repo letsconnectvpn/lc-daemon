@@ -223,8 +223,6 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 			c <- clientsDisconnected
 			return
 		}
-		c <- 0
-		return
 	}
 	c <- 0
 }
