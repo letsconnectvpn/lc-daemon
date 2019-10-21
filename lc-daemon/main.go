@@ -80,14 +80,14 @@ func handleConnection(conn net.Conn) {
 		msg, _ := reader.ReadString('\n')
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
 			newPortList, err := parsePortCommand(msg)
-			if err == nil {
-				intPortList = newPortList
-				writer.WriteString(fmt.Sprintf("OK: 0\n"))
-				writer.Flush()
-				continue
-			}
+			if err != nil {
+			    writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+			    writer.Flush()
+			    continue
+            }
 
-			writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+			intPortList = newPortList
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			continue
 		}
