@@ -285,7 +285,7 @@ func parsePortCommand(msg string) ([]int, error) {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
 
-	if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST ") {
+	if 0 != strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST ") {
 		return nil, errors.New("NOT_SUPPORTED")
 	}
 
