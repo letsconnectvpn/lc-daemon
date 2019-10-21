@@ -193,6 +193,8 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if 0 == strings.Index(msg, "QUIT") {
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			writer.Flush()
 			return
 		}
 
