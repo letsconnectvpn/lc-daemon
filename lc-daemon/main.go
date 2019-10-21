@@ -77,7 +77,11 @@ func handleConnection(conn net.Conn) {
 	writer := bufio.NewWriter(conn)
 
 	for {
-		msg, _ := reader.ReadString('\n')
+		msg, err := reader.ReadString('\n')
+		if err != nil {
+			// unable to read string, possibly the client left
+			return
+		}
 		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
 			newPortList, err := parsePortCommand(msg)
 			if err != nil {
