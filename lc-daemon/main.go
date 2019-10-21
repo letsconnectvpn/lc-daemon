@@ -82,8 +82,8 @@ func handleConnection(conn net.Conn) {
 			// unable to read string, possibly the client left
 			return
 		}
-		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
-			fmt.Println("SET_OPENVPN_MANAGEMENT_PORT_LIST")
+		if 0 == strings.Index(msg, "SET_PORTS") {
+			fmt.Println("SET_PORTS")
 			newPortList, err := parsePortCommand(msg)
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
@@ -292,16 +292,16 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 }
 
 func parsePortCommand(msg string) ([]int, error) {
-	if len(msg) <= 35 {
+	if len(msg) <= len("SET_PORTS") {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
 
-	if 0 != strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST ") {
+	if 0 != strings.Index(msg, "SET_PORTS ") {
 		return nil, errors.New("NOT_SUPPORTED")
 	}
 
 	// string ends in "\n", is not trimmed, so take one character away...
-	portList := strings.Fields(msg[33 : len(msg)-1])
+	portList := strings.Fields(msg[len("SET_PORTS") : len(msg)-1])
 	if len(portList) == 0 {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
