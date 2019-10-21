@@ -57,12 +57,12 @@ func main() {
 	flag.Parse()
 	ln, err := net.Listen("tcp", *listenHostPort)
 	if err != nil {
-		// handle error
+		// XXX handle error
 	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			// handle error
+			// XXX handle error
 		}
 		go handleConnection(conn)
 	}
