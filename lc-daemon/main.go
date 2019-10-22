@@ -1,33 +1,25 @@
 /*
- * Simple code to talk to the OpenVPN management ports of multiple OpenVPN
- * processes. This code will open sockets, send "kill" command and agreggate
- * the number of disconnected clients.
+ * Copyright (c) 2019 François Kooman <fkooman@tuxed.net>
  *
- * A telnet session to a single OpenVPN process looks like this:
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * [fkooman@vpn ~]$ telnet localhost 11940
- * Trying ::1...
- * telnet: connect to address ::1: Connection refused
- * Trying 127.0.0.1...
- * Connected to localhost.
- * Escape character is '^]'.
- * >INFO:OpenVPN Management Interface Version 1 -- type 'help' for more info
- * kill 07d1ccc455a21c2d5ac6068d4af727ca
- * SUCCESS: common name '07d1ccc455a21c2d5ac6068d4af727ca' found, 1 client(s) killed
- * kill foo
- * ERROR: common name 'foo' not found
- * quit
- * Connection closed by foreign host.
- * [fkooman@vpn ~]$
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
  *
- * The point here is to be able to (concurrently) connect to many OpenVPN
- * processes. The example below has only two. Extra functionality later will
- * be also the use of the "status" command to see which clients are connected
- * and aggregate that as well.
- *
- * Eventually this will need to become a daemon that supports TLS and abstracts
- * the multiple OpenVPN processes away from the daemon caller...
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
+
 package main
 
 import (
@@ -77,14 +69,19 @@ func handleConnection(conn net.Conn) {
 	writer := bufio.NewWriter(conn)
 
 	for {
-		msg, _ := reader.ReadString('\n')
-		if 0 == strings.Index(msg, "SET_OPENVPN_MANAGEMENT_PORT_LIST") {
+		msg, err := reader.ReadString('\n')
+		if err != nil {
+			// unable to read string, possibly the client left
+			return
+		}
+		if 0 == strings.Index(msg, "SET_PORTS") {
+			fmt.Println("SET_PORTS")
 			newPortList, err := parsePortCommand(msg)
 			if err != nil {
-			    writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
-			    writer.Flush()
-			    continue
-            }
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
+				writer.Flush()
+				continue
+			}
 
 			intPortList = newPortList
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
@@ -93,7 +90,16 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if 0 == strings.Index(msg, "DISCONNECT") {
+			fmt.Println("DISCONNECT")
+
 			if len(msg) > 13 {
+
+				if 0 != strings.Index(msg, "DISCONNECT ") {
+					writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
+					writer.Flush()
+					continue
+				}
+
 				// we don't want to \n otherwise we could use msg[11:]
 				commonName := msg[11 : len(msg)-2]
 
@@ -105,7 +111,7 @@ func handleConnection(conn net.Conn) {
 					continue
 				}
 
-				c := make(chan bool, len(intPortList))
+				c := make(chan int, len(intPortList))
 				var wgDisc sync.WaitGroup
 
 				for _, p := range intPortList {
@@ -124,10 +130,8 @@ func handleConnection(conn net.Conn) {
 				// below we basically count all the "trues" in the channel populated by the
 				// routines...
 				clientDisconnectCount := 0
-				for b := range c {
-					if b {
-						clientDisconnectCount++
-					}
+				for clientDisconnected := range c {
+					clientDisconnectCount += clientDisconnected
 				}
 
 				writer.WriteString(fmt.Sprintf("OK: 1\n"))
@@ -142,6 +146,7 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if 0 == strings.Index(msg, "LIST") {
+			fmt.Println("LIST")
 
 			//prevent connection getting stuck, wait for next line
 			if len(intPortList) == 0 {
@@ -185,6 +190,7 @@ func handleConnection(conn net.Conn) {
 		}
 
 		if 0 == strings.Index(msg, "QUIT") {
+			fmt.Println("QUIT")
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			return
@@ -195,47 +201,43 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func disconnectClient(c chan bool, p int, commonName string, wg *sync.WaitGroup) {
+func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 	if err != nil {
 		// unable to connect, no matter, maybe the process is temporary away,
 		// so no need to disconnect clients there ;-)
-		c <- false
+		c <- 0
 		return
 	}
 
 	defer conn.Close()
 
-	// turn off live OpenVPN log that can confuse our output parsing
-	fmt.Fprintf(conn, fmt.Sprint("log off\n"))
-
 	reader := bufio.NewReader(conn)
-	// we need to remove everything that's currently in the buffer waiting to
-	// be read. We are not interested in it at all, we only care about the
-	// response to our commands hereafter...
-	// XXX there should be a one-liner that can fix this, right?
-	txt, _ := reader.ReadString('\n')
-	for 0 != strings.Index(txt, "END") && 0 != strings.Index(txt, "SUCCESS") && 0 != strings.Index(txt, "ERROR") {
-		txt, _ = reader.ReadString('\n')
-	}
 
 	// disconnect the client
 	fmt.Fprintf(conn, fmt.Sprintf("kill %s\n", commonName))
+
 	text, _ := reader.ReadString('\n')
-	if 0 == strings.Index(text, "SUCCESS") {
-		c <- true
-	} else {
-		c <- false
+	//in case interleaving messages does happen
+	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
+		text, _ = reader.ReadString('\n')
 	}
 
-	// XXX maybe it is easier to just close the connection, who cares about
-	// quit?
-	fmt.Fprintf(conn, "quit\n")
+	if 0 == strings.Index(text, "SUCCESS") {
+		clientString := regexp.MustCompile(`[0-9]+`).FindString(text[strings.Index(text, ","):])
+		if clientsDisconnected, err := strconv.Atoi(clientString); err == nil {
+			c <- clientsDisconnected
+			return
+		}
+	}
+	c <- 0
 }
 
 func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("Obtain status [%d]", p))
+
 	defer wg.Done()
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
@@ -282,11 +284,16 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 }
 
 func parsePortCommand(msg string) ([]int, error) {
-	if len(msg) <= 35 {
+	if len(msg) <= len("SET_PORTS") {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
 
-	portList := strings.Fields(msg[33 : len(msg)-2])
+	if 0 != strings.Index(msg, "SET_PORTS ") {
+		return nil, errors.New("NOT_SUPPORTED")
+	}
+
+	// string ends in "\n", is not trimmed, so take one character away...
+	portList := strings.Fields(msg[len("SET_PORTS") : len(msg)-1])
 	if len(portList) == 0 {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
