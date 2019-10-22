@@ -1,33 +1,25 @@
 /*
- * Simple code to talk to the OpenVPN management ports of multiple OpenVPN
- * processes. This code will open sockets, send "kill" command and agreggate
- * the number of disconnected clients.
+ * Copyright (c) 2019 François Kooman <fkooman@tuxed.net>
  *
- * A telnet session to a single OpenVPN process looks like this:
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * [fkooman@vpn ~]$ telnet localhost 11940
- * Trying ::1...
- * telnet: connect to address ::1: Connection refused
- * Trying 127.0.0.1...
- * Connected to localhost.
- * Escape character is '^]'.
- * >INFO:OpenVPN Management Interface Version 1 -- type 'help' for more info
- * kill 07d1ccc455a21c2d5ac6068d4af727ca
- * SUCCESS: common name '07d1ccc455a21c2d5ac6068d4af727ca' found, 1 client(s) killed
- * kill foo
- * ERROR: common name 'foo' not found
- * quit
- * Connection closed by foreign host.
- * [fkooman@vpn ~]$
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
  *
- * The point here is to be able to (concurrently) connect to many OpenVPN
- * processes. The example below has only two. Extra functionality later will
- * be also the use of the "status" command to see which clients are connected
- * and aggregate that as well.
- *
- * Eventually this will need to become a daemon that supports TLS and abstracts
- * the multiple OpenVPN processes away from the daemon caller...
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
+
 package main
 
 import (

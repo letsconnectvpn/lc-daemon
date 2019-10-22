@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"testing"
-    "errors"
 )
 
 func TestParsePortCommand(t *testing.T) {
@@ -15,7 +15,7 @@ func TestParsePortCommand(t *testing.T) {
 }
 
 func TestParsePortCommandString(t *testing.T) {
-    exp := errors.New("INVALID_PARAMETER")
+	exp := errors.New("INVALID_PARAMETER")
 	_, got := parsePortCommand("SET_PORTS a b 11941\n")
 	if got.Error() != exp.Error() {
 		t.Errorf("Got: %v, Wanted: %v", got, exp)
