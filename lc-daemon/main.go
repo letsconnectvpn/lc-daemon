@@ -71,7 +71,7 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, err := reader.ReadString('\n')
 		if err != nil {
-			// unable to read string, possibly the client left
+			// client closed the connection
 			return
 		}
 		if 0 == strings.Index(msg, "SET_PORTS") {
@@ -219,10 +219,15 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 	// disconnect the client
 	fmt.Fprintf(conn, fmt.Sprintf("kill %s\n", commonName))
 
-	text, _ := reader.ReadString('\n')
-	//in case interleaving messages does happen
+	text, err := "", nil
+	// read till the proper response is found, assuming interleaving does happen
 	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			// port closed the connection, port is not a OpenVPN management port
+			c <- 0
+			return
+		}
 	}
 
 	if 0 == strings.Index(text, "SUCCESS") {
@@ -252,16 +257,24 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 
 	reader := bufio.NewReader(conn)
 
-	// send status command to OpenVPN management interface
+	// send status command
 	fmt.Fprintf(conn, "status 2\n")
-	text, _ := reader.ReadString('\n')
+
+	text, err := "", nil
+
 	for 0 != strings.Index(text, "CLIENT_LIST") {
 		// walk until we find CLIENT_LIST
-		// exit loop if no clients are found -> if not inf loop searching for "CLIENT_LIST"
+		// exit loop if no clients are found -> if not infinite loop searching for "CLIENT_LIST"
 		if 0 == strings.Index(text, "END") {
-			break
+			c <- nil
+			return
 		}
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			// port closed the connection, port is not a OpenVPN management port
+			c <- nil
+			return
+		}
 	}
 
 	connections := make([]*connectionInfo, 0)
@@ -277,9 +290,14 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 			newConnection := connectionInfo{strList[1], strList[3], strList[4]}
 			connections = append(connections, &newConnection)
 		}
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			// highly unlikely that the port will close the connections after going this far
+			// just send the connections info up to that point
+			c <- connections
+			return
+		}
 	}
-
 	c <- connections
 }
 
