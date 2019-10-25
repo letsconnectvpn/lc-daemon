@@ -74,7 +74,7 @@ func handleConnection(conn net.Conn) {
 	for {
 		msg, err := reader.ReadString('\n')
 		if err != nil {
-			// client closed the connection
+			// unable to read string, possibly the client left
 			return
 		}
 		if 0 == strings.Index(msg, "SET_PORTS") {
@@ -210,18 +210,6 @@ func disconnectClient(c chan int, port int, commonName string, wg *sync.WaitGrou
 
 	defer wg.Done()
 
-	//Timeout of 10 seconds, why so low?
-	//We assume ONLY the daemons will be talking to the OpenVPN management-interface
-	//the management-interfaces replies fast with "status 2" and "kill"
-	//due to instantly getting the reply the daemon can quickly free the interface for other calls
-
-	//if the port was not a management-interface, it will have already freed the connection
-	//or will not reply, causing a deadline-error down below.
-	//if there are multiple calls the queqe will be longer
-	//thus we can conclude that after a certain time, this in not a management-interface(10sec timeout)
-
-	//if a user was manually busy with the management-interface, this will timeout
-	//in this case the port will just be disregarded
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
 		// timeout error, port was busy with another connection
@@ -245,8 +233,7 @@ func disconnectClient(c chan int, port int, commonName string, wg *sync.WaitGrou
 	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
 		text, err = reader.ReadString('\n')
 		if err != nil {
-			// port closed the connection, port is not a OpenVPN management port
-			// deadline raised error, no further response from port
+			fmt.Printf("DISCONNECT: Port[%v] %s\n", port, err.Error())
 			c <- 0
 			return
 		}
@@ -267,18 +254,6 @@ func obtainStatus(c chan []*connectionInfo, port int, wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
-	//Timeout of 10 seconds, why so low?
-	//We assume ONLY the daemons will be talking to the OpenVPN management-interface
-	//the management-interfaces replies fast with "status 2" and "kill"
-	//due to instantly getting the reply the daemon can quickly free the interface for other calls
-
-	//if the port was not a management-interface, it will have already freed the connection
-	//or will not reply, causing a deadline-error down below.
-	//if there are multiple calls the queqe will be longer
-	//thus we can conclude that after a certain time, this in not a management-interface(10sec timeout)
-
-	//if a user was manually busy with the management-interface, this will timeout
-	//in this case the port will just be disregarded
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
 		// timeout error, port was busy with another connection
@@ -307,8 +282,7 @@ func obtainStatus(c chan []*connectionInfo, port int, wg *sync.WaitGroup) {
 		}
 		text, err = reader.ReadString('\n')
 		if err != nil {
-			// port closed the connection, port is not a OpenVPN management port
-			// deadline raised error, no further response from port
+			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
 			c <- nil
 			return
 		}
@@ -329,8 +303,7 @@ func obtainStatus(c chan []*connectionInfo, port int, wg *sync.WaitGroup) {
 		}
 		text, err = reader.ReadString('\n')
 		if err != nil {
-			// highly unlikely that the port will close the connections after going this far
-			// just send the connections info up to that point
+			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
 			c <- connections
 			return
 		}
