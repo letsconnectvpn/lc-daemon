@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 //struct used in LIST
@@ -203,13 +204,28 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) {
+func disconnectClient(c chan int, port int, commonName string, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("disconnect client on port [%d]", port))
+
 	defer wg.Done()
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	//Timeout of 10 seconds, why so low?
+	//We assume ONLY the daemons will be talking to the OpenVPN management-interface
+	//the management-interfaces replies fast with "status 2" and "kill"
+	//due to instantly getting the reply the daemon can quickly free the interface for other calls
+
+	//if the port was not a management-interface, it will have already freed the connection
+	//or will not reply, causing a deadline-error down below.
+	//if there are multiple calls the queqe will be longer
+	//thus we can conclude that after a certain time, this in not a management-interface(10sec timeout)
+
+	//if a user was manually busy with the management-interface, this will timeout
+	//in this case the port will just be disregarded
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
-		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to disconnect clients there ;-)
+		// timeout error, port was busy with another connection
+		// the port was not listening for connections
+		// port refused connection
 		c <- 0
 		return
 	}
@@ -222,11 +238,14 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 	fmt.Fprintf(conn, fmt.Sprintf("kill %s\n", commonName))
 
 	text, err := "", nil
+	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
+
 	// read till the proper response is found, assuming interleaving does happen
 	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
 		text, err = reader.ReadString('\n')
 		if err != nil {
 			// port closed the connection, port is not a OpenVPN management port
+			// deadline raised error, no further response from port
 			c <- 0
 			return
 		}
@@ -242,15 +261,28 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 	c <- 0
 }
 
-func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
-	fmt.Println(fmt.Sprintf("Obtain status [%d]", p))
+func obtainStatus(c chan []*connectionInfo, port int, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("Obtain status on port [%d]", port))
 
 	defer wg.Done()
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	//Timeout of 10 seconds, why so low?
+	//We assume ONLY the daemons will be talking to the OpenVPN management-interface
+	//the management-interfaces replies fast with "status 2" and "kill"
+	//due to instantly getting the reply the daemon can quickly free the interface for other calls
+
+	//if the port was not a management-interface, it will have already freed the connection
+	//or will not reply, causing a deadline-error down below.
+	//if there are multiple calls the queqe will be longer
+	//thus we can conclude that after a certain time, this in not a management-interface(10sec timeout)
+
+	//if a user was manually busy with the management-interface, this will timeout
+	//in this case the port will just be disregarded
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
-		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to retrieve clients there ;-)
+		// timeout error, port was busy with another connection
+		// the port was not listening for connections
+		// port refused connection
 		c <- nil
 		return
 	}
@@ -263,6 +295,7 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	fmt.Fprintf(conn, "status 2\n")
 
 	text, err := "", nil
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 
 	for 0 != strings.Index(text, "CLIENT_LIST") {
 		// walk until we find CLIENT_LIST
@@ -274,6 +307,7 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 		text, err = reader.ReadString('\n')
 		if err != nil {
 			// port closed the connection, port is not a OpenVPN management port
+			// deadline raised error, no further response from port
 			c <- nil
 			return
 		}
