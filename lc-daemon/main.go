@@ -131,9 +131,10 @@ func handleConnection(conn net.Conn) {
 		if 0 == strings.Index(msg, "LIST") {
 			fmt.Println("LIST")
 
-			//prevent connection getting stuck, wait for next line
-			if len(intPortList) == 0 {
-				writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			// we are not interested in the parameters (if they are entered), they are simply disregared here
+			// check if the command is truly "LIST" and not "LIST*"
+			if strings.Fields(msg)[0] != "LIST" {
+				writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
 				writer.Flush()
 				continue
 			}
@@ -174,6 +175,15 @@ func handleConnection(conn net.Conn) {
 
 		if 0 == strings.Index(msg, "QUIT") {
 			fmt.Println("QUIT")
+
+			// we are not interested in the parameters (if they are entered), they are simply disregared here
+			// check if the command is truly "QUIT" and and not "QUIT*"
+			if strings.Fields(msg)[0] != "QUIT" {
+				writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
+				writer.Flush()
+				continue
+			}
+
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			return
