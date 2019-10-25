@@ -284,27 +284,23 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 }
 
 func parsePortCommand(msg string) ([]int, error) {
-	if len(msg) <= len("SET_PORTS") {
-		return nil, errors.New("MISSING_PARAMETER")
-	}
-
-	if 0 != strings.Index(msg, "SET_PORTS ") {
+	// strings.Fields() will handle/remove any whitespace in between other chars incl CRLF/LF
+	portList := strings.Fields(msg)
+	if portList[0] != "SET_PORTS" {
 		return nil, errors.New("NOT_SUPPORTED")
 	}
 
-	// string ends in "\n", is not trimmed, so take one character away...
-	portList := strings.Fields(msg[len("SET_PORTS") : len(msg)-1])
-	if len(portList) == 0 {
+	if len(portList) == 1 {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
 
 	newPortList := make([]int, 0)
-	for _, port := range portList {
-		intPort, err := strconv.ParseUint(port, 10, 16)
+	for _, port := range portList[1:] {
+		uintPort, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
 			return nil, errors.New("INVALID_PARAMETER")
 		}
-		newPortList = append(newPortList, int(intPort))
+		newPortList = append(newPortList, int(uintPort))
 	}
 
 	return newPortList, nil
