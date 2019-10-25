@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -297,10 +298,17 @@ func parsePortCommand(msg string) ([]int, error) {
 	newPortList := make([]int, 0)
 	for _, port := range portList[1:] {
 		uintPort, err := strconv.ParseUint(port, 10, 16)
-		if err != nil {
+		if err != nil || uintPort == 0 {
 			return nil, errors.New("INVALID_PARAMETER")
 		}
-		newPortList = append(newPortList, int(uintPort))
+
+		intPort := int(uintPort)
+		i := sort.Search(len(newPortList), func(i int) bool { return newPortList[i] >= intPort })
+		// only add the port if its not there yet, disregard if duplicate is found
+		if i >= len(newPortList) || newPortList[i] != intPort {
+			newPortList = append(newPortList, intPort)
+			sort.Ints(newPortList)
+		}
 	}
 
 	return newPortList, nil
