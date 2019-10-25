@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 //struct used in LIST
@@ -49,12 +50,14 @@ func main() {
 	flag.Parse()
 	ln, err := net.Listen("tcp", *listenHostPort)
 	if err != nil {
-		// XXX handle error
+		fmt.Println(err)
+		return
 	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			// XXX handle error
+			fmt.Println(err)
+			continue
 		}
 		go handleConnection(conn)
 	}
@@ -172,12 +175,14 @@ func handleConnection(conn net.Conn) {
 			close(c)
 
 			connectionCount := 0
-			var rtnConnList string
+			rtnConnList := ""
 			for connections := range c {
 				if connections != nil {
 					for _, conn := range connections {
-						connectionCount++
-						rtnConnList = rtnConnList + fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6)
+						if conn.commonName != "UNDEF" {
+							connectionCount++
+							rtnConnList = rtnConnList + fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6)
+						}
 					}
 				}
 			}
@@ -185,7 +190,6 @@ func handleConnection(conn net.Conn) {
 			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
 			writer.WriteString(rtnConnList)
 			writer.Flush()
-
 			continue
 		}
 
@@ -201,13 +205,16 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) {
+func disconnectClient(c chan int, port int, commonName string, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("disconnect client on port [%d]", port))
+
 	defer wg.Done()
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
-		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to disconnect clients there ;-)
+		// timeout error, port was busy with another connection
+		// the port was not listening for connections
+		// port refused connection
 		c <- 0
 		return
 	}
@@ -219,10 +226,17 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 	// disconnect the client
 	fmt.Fprintf(conn, fmt.Sprintf("kill %s\n", commonName))
 
-	text, _ := reader.ReadString('\n')
-	//in case interleaving messages does happen
+	text, err := "", nil
+	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
+
+	// read till the proper response is found, assuming interleaving does happen
 	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("DISCONNECT: Port[%v] %s\n", port, err.Error())
+			c <- 0
+			return
+		}
 	}
 
 	if 0 == strings.Index(text, "SUCCESS") {
@@ -235,15 +249,16 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 	c <- 0
 }
 
-func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
-	fmt.Println(fmt.Sprintf("Obtain status [%d]", p))
+func obtainStatus(c chan []*connectionInfo, port int, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("Obtain status on port [%d]", port))
 
 	defer wg.Done()
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
-		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to retrieve clients there ;-)
+		// timeout error, port was busy with another connection
+		// the port was not listening for connections
+		// port refused connection
 		c <- nil
 		return
 	}
@@ -252,16 +267,25 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 
 	reader := bufio.NewReader(conn)
 
-	// send status command to OpenVPN management interface
+	// send status command
 	fmt.Fprintf(conn, "status 2\n")
-	text, _ := reader.ReadString('\n')
+
+	text, err := "", nil
+	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
+
 	for 0 != strings.Index(text, "CLIENT_LIST") {
 		// walk until we find CLIENT_LIST
-		// exit loop if no clients are found -> if not inf loop searching for "CLIENT_LIST"
+		// exit loop if no clients are found -> if not infinite loop searching for "CLIENT_LIST"
 		if 0 == strings.Index(text, "END") {
-			break
+			c <- nil
+			return
 		}
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
+			c <- nil
+			return
+		}
 	}
 
 	connections := make([]*connectionInfo, 0)
@@ -269,7 +293,7 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	//can continue even when interleaving msgs are present
 	for 0 != strings.Index(text, "END") {
 		if 0 == strings.Index(text, "CLIENT_LIST") {
-			strList := strings.Split(text, ",")
+			strList := strings.Split(strings.TrimSpace(text), ",")
 			//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
 			//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
 			//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Connetected Since (time_t)}
@@ -277,9 +301,13 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 			newConnection := connectionInfo{strList[1], strList[3], strList[4]}
 			connections = append(connections, &newConnection)
 		}
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
+			c <- connections
+			return
+		}
 	}
-
 	c <- connections
 }
 
