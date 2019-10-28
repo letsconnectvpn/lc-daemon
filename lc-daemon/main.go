@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -56,7 +57,7 @@ func main() {
 	cert, err := tls.LoadX509KeyPair("./server/lc-daemon.crt", "./server/lc-daemon.key")
 	if err != nil {
 		fmt.Println(err)
-		return
+		os.Exit(1)
 	}
 
 	//Get CA for client auth
@@ -64,12 +65,12 @@ func main() {
 	pemCA, err := ioutil.ReadFile("./ca.crt")
 	if err != nil {
 		fmt.Println(err)
-		return
+		os.Exit(1)
 	}
 
 	if !clientPool.AppendCertsFromPEM(pemCA) {
 		fmt.Println("Unable to add CA certificate to daemon")
-		return
+		os.Exit(1)
 	}
 
 	config := &tls.Config{
@@ -82,7 +83,7 @@ func main() {
 	ln, err := tls.Listen("tcp", *listenHostPort, config)
 	if err != nil {
 		fmt.Println(err)
-		return
+		os.Exit(1)
 	}
 	for {
 		conn, err := ln.Accept()
