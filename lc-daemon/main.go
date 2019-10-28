@@ -24,9 +24,12 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"regexp"
 	"sort"
@@ -49,7 +52,34 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	ln, err := net.Listen("tcp", *listenHostPort)
+	//Get server cert and key
+	cert, err := tls.LoadX509KeyPair("./lc-daemon.crt", "lc-daemon.key")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	//Get CA for client auth
+	clientPool := x509.NewCertPool()
+	pemCA, err := ioutil.ReadFile("./ca.crt")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if !clientPool.AppendCertsFromPEM(pemCA) {
+		fmt.Println("Unable to add CA certificate to daemon")
+		return
+	}
+
+	config := &tls.Config{
+		Certificates:             []tls.Certificate{cert},
+		MinVersion:               tls.VersionTLS12,
+		ClientAuth:               tls.RequireAndVerifyClientCert,
+		ClientCAs:                clientPool,
+		CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384},
+		PreferServerCipherSuites: true}
+	ln, err := tls.Listen("tcp", *listenHostPort, config)
 	if err != nil {
 		fmt.Println(err)
 		return
