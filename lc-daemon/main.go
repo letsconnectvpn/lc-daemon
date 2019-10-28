@@ -24,6 +24,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -49,7 +50,18 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	ln, err := net.Listen("tcp", *listenHostPort)
+	cert, err := tls.LoadX509KeyPair("./lc-daemon.crt", "lc-daemon.key")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	config := &tls.Config{
+		Certificates:             []tls.Certificate{cert},
+		MinVersion:               tls.VersionTLS12,
+		CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384},
+		PreferServerCipherSuites: true}
+	ln, err := tls.Listen("tcp", *listenHostPort, config)
 	if err != nil {
 		fmt.Println(err)
 		return
