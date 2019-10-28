@@ -29,9 +29,11 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 //struct used in LIST
@@ -49,12 +51,14 @@ func main() {
 	flag.Parse()
 	ln, err := net.Listen("tcp", *listenHostPort)
 	if err != nil {
-		// XXX handle error
+		fmt.Println(err)
+		return
 	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			// XXX handle error
+			fmt.Println(err)
+			continue
 		}
 		go handleConnection(conn)
 	}
@@ -91,56 +95,38 @@ func handleConnection(conn net.Conn) {
 
 		if 0 == strings.Index(msg, "DISCONNECT") {
 			fmt.Println("DISCONNECT")
-
-			if len(msg) > 13 {
-
-				if 0 != strings.Index(msg, "DISCONNECT ") {
-					writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
-					writer.Flush()
-					continue
-				}
-
-				// we don't want to \n otherwise we could use msg[11:]
-				commonName := msg[11 : len(msg)-2]
-
-				//parsing commonName
-				validCommonName := regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
-				if !validCommonName.MatchString(commonName) {
-					writer.WriteString(fmt.Sprintf("ERR: INVALID_PARAMETER\n"))
-					writer.Flush()
-					continue
-				}
-
-				c := make(chan int, len(intPortList))
-				var wgDisc sync.WaitGroup
-
-				for _, p := range intPortList {
-					wgDisc.Add(1)
-					go disconnectClient(c, p, commonName, &wgDisc)
-				}
-
-				// wait for all routines to finish...
-				wgDisc.Wait()
-
-				// close channel, we do not expect any data anymore, this is needed
-				// because otherwise "range c" below is still waiting for more data on the
-				// channel...
-				close(c)
-
-				// below we basically count all the "trues" in the channel populated by the
-				// routines...
-				clientDisconnectCount := 0
-				for clientDisconnected := range c {
-					clientDisconnectCount += clientDisconnected
-				}
-
-				writer.WriteString(fmt.Sprintf("OK: 1\n"))
-				writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
+			commonName, err := parseDisconnectCommand(msg)
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
 				writer.Flush()
 				continue
 			}
 
-			writer.WriteString(fmt.Sprintf("ERR: MISSING_PARAMETER\n"))
+			c := make(chan int, len(intPortList))
+			var wgDisc sync.WaitGroup
+
+			for _, p := range intPortList {
+				wgDisc.Add(1)
+				go disconnectClient(c, p, commonName, &wgDisc)
+			}
+
+			// wait for all routines to finish...
+			wgDisc.Wait()
+
+			// close channel, we do not expect any data anymore, this is needed
+			// because otherwise "range c" below is still waiting for more data on the
+			// channel...
+			close(c)
+
+			// below we basically count all the "trues" in the channel populated by the
+			// routines...
+			clientDisconnectCount := 0
+			for clientDisconnected := range c {
+				clientDisconnectCount += clientDisconnected
+			}
+
+			writer.WriteString(fmt.Sprintf("OK: 1\n"))
+			writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
 			writer.Flush()
 			continue
 		}
@@ -148,9 +134,10 @@ func handleConnection(conn net.Conn) {
 		if 0 == strings.Index(msg, "LIST") {
 			fmt.Println("LIST")
 
-			//prevent connection getting stuck, wait for next line
-			if len(intPortList) == 0 {
-				writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			// we are not interested in the parameters (if they are entered), they are simply disregared here
+			// check if the command is truly "LIST" and not "LIST*"
+			if strings.Fields(msg)[0] != "LIST" {
+				writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
 				writer.Flush()
 				continue
 			}
@@ -172,12 +159,14 @@ func handleConnection(conn net.Conn) {
 			close(c)
 
 			connectionCount := 0
-			var rtnConnList string
+			rtnConnList := ""
 			for connections := range c {
 				if connections != nil {
 					for _, conn := range connections {
-						connectionCount++
-						rtnConnList = rtnConnList + fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6)
+						if conn.commonName != "UNDEF" {
+							connectionCount++
+							rtnConnList = rtnConnList + fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6)
+						}
 					}
 				}
 			}
@@ -185,12 +174,20 @@ func handleConnection(conn net.Conn) {
 			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
 			writer.WriteString(rtnConnList)
 			writer.Flush()
-
 			continue
 		}
 
 		if 0 == strings.Index(msg, "QUIT") {
 			fmt.Println("QUIT")
+
+			// we are not interested in the parameters (if they are entered), they are simply disregared here
+			// check if the command is truly "QUIT" and and not "QUIT*"
+			if strings.Fields(msg)[0] != "QUIT" {
+				writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
+				writer.Flush()
+				continue
+			}
+
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			return
@@ -201,13 +198,16 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) {
+func disconnectClient(c chan int, port int, commonName string, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("disconnect client on port [%d]", port))
+
 	defer wg.Done()
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
-		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to disconnect clients there ;-)
+		// timeout error, port was busy with another connection
+		// the port was not listening for connections
+		// port refused connection
 		c <- 0
 		return
 	}
@@ -219,10 +219,17 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 	// disconnect the client
 	fmt.Fprintf(conn, fmt.Sprintf("kill %s\n", commonName))
 
-	text, _ := reader.ReadString('\n')
-	//in case interleaving messages does happen
+	text, err := "", nil
+	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
+
+	// read till the proper response is found, assuming interleaving does happen
 	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("DISCONNECT: Port[%v] %s\n", port, err.Error())
+			c <- 0
+			return
+		}
 	}
 
 	if 0 == strings.Index(text, "SUCCESS") {
@@ -235,15 +242,16 @@ func disconnectClient(c chan int, p int, commonName string, wg *sync.WaitGroup) 
 	c <- 0
 }
 
-func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
-	fmt.Println(fmt.Sprintf("Obtain status [%d]", p))
+func obtainStatus(c chan []*connectionInfo, port int, wg *sync.WaitGroup) {
+	fmt.Println(fmt.Sprintf("Obtain status on port [%d]", port))
 
 	defer wg.Done()
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
 	if err != nil {
-		// unable to connect, no matter, maybe the process is temporary away,
-		// so no need to retrieve clients there ;-)
+		// timeout error, port was busy with another connection
+		// the port was not listening for connections
+		// port refused connection
 		c <- nil
 		return
 	}
@@ -252,16 +260,25 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 
 	reader := bufio.NewReader(conn)
 
-	// send status command to OpenVPN management interface
+	// send status command
 	fmt.Fprintf(conn, "status 2\n")
-	text, _ := reader.ReadString('\n')
+
+	text, err := "", nil
+	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
+
 	for 0 != strings.Index(text, "CLIENT_LIST") {
 		// walk until we find CLIENT_LIST
-		// exit loop if no clients are found -> if not inf loop searching for "CLIENT_LIST"
+		// exit loop if no clients are found -> if not infinite loop searching for "CLIENT_LIST"
 		if 0 == strings.Index(text, "END") {
-			break
+			c <- nil
+			return
 		}
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
+			c <- nil
+			return
+		}
 	}
 
 	connections := make([]*connectionInfo, 0)
@@ -269,7 +286,7 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 	//can continue even when interleaving msgs are present
 	for 0 != strings.Index(text, "END") {
 		if 0 == strings.Index(text, "CLIENT_LIST") {
-			strList := strings.Split(text, ",")
+			strList := strings.Split(strings.TrimSpace(text), ",")
 			//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
 			//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
 			//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Connetected Since (time_t)}
@@ -277,35 +294,62 @@ func obtainStatus(c chan []*connectionInfo, p int, wg *sync.WaitGroup) {
 			newConnection := connectionInfo{strList[1], strList[3], strList[4]}
 			connections = append(connections, &newConnection)
 		}
-		text, _ = reader.ReadString('\n')
+		text, err = reader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
+			c <- connections
+			return
+		}
 	}
-
 	c <- connections
 }
 
 func parsePortCommand(msg string) ([]int, error) {
-	if len(msg) <= len("SET_PORTS") {
-		return nil, errors.New("MISSING_PARAMETER")
-	}
-
-	if 0 != strings.Index(msg, "SET_PORTS ") {
+	// strings.Fields() will handle/remove any whitespace in between other chars incl CRLF/LF
+	portList := strings.Fields(msg)
+	if portList[0] != "SET_PORTS" {
 		return nil, errors.New("NOT_SUPPORTED")
 	}
 
-	// string ends in "\n", is not trimmed, so take one character away...
-	portList := strings.Fields(msg[len("SET_PORTS") : len(msg)-1])
-	if len(portList) == 0 {
+	if len(portList) == 1 {
 		return nil, errors.New("MISSING_PARAMETER")
 	}
 
 	newPortList := make([]int, 0)
-	for _, port := range portList {
-		intPort, err := strconv.ParseUint(port, 10, 16)
-		if err != nil {
+	for _, port := range portList[1:] {
+		uintPort, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || uintPort == 0 {
 			return nil, errors.New("INVALID_PARAMETER")
 		}
-		newPortList = append(newPortList, int(intPort))
+
+		intPort := int(uintPort)
+		i := sort.Search(len(newPortList), func(i int) bool { return newPortList[i] >= intPort })
+		// only add the port if its not there yet, disregard if duplicate is found
+		if i >= len(newPortList) || newPortList[i] != intPort {
+			newPortList = append(newPortList, intPort)
+			sort.Ints(newPortList)
+		}
 	}
 
 	return newPortList, nil
+}
+
+func parseDisconnectCommand(msg string) (string, error) {
+	// strings.Fields() will handle/remove any whitespace in between other chars incl CRLF/LF
+	disconnectList := strings.Fields(msg)
+	if disconnectList[0] != "DISCONNECT" {
+		return "", errors.New("NOT_SUPPORTED")
+	}
+
+	if len(disconnectList) == 1 {
+		return "", errors.New("MISSING_PARAMETER")
+	}
+
+	//parsing commonName
+	validCommonName := regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
+	if !validCommonName.MatchString(disconnectList[1]) {
+		return "", errors.New("INVALID_PARAMETER")
+	}
+
+	return disconnectList[1], nil
 }
