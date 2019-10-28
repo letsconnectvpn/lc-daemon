@@ -1,5 +1,15 @@
 <?php
 
+/*
+ * To test:
+ *
+ * vpn-ca init
+ * vpn-ca -server lc-daemon
+ * vpn-ca -client lc-client
+ * ./_bin/lc-daemon &
+ * php php/lc-daemon-client.php
+ */
+
 $commandList = [
     'SET_PORTS 11940 11941',
     'LIST',
@@ -15,9 +25,9 @@ $streamContext = stream_context_create(
     [
         'ssl' => [
             'peer_name' => 'lc-daemon',
-            'cafile' => './ca.crt',
-            'local_cert' => './lc-client.crt',
-            'local_pk' => './lc-client.key',
+            'cafile' => dirname(__DIR__).'/ca.crt',
+            'local_cert' => dirname(__DIR__).'/client/lc-client.crt',
+            'local_pk' => dirname(__DIR__).'/client/lc-client.key',
         ],
     ]
 );

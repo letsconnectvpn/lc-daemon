@@ -53,7 +53,7 @@ func main() {
 	}
 	flag.Parse()
 	//Get server cert and key
-	cert, err := tls.LoadX509KeyPair("./lc-daemon.crt", "lc-daemon.key")
+	cert, err := tls.LoadX509KeyPair("./server/lc-daemon.crt", "./server/lc-daemon.key")
 	if err != nil {
 		fmt.Println(err)
 		return
