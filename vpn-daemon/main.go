@@ -26,18 +26,27 @@ import (
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+)
+
+//dir to be used for TLS, can be modified during compile-time with:
+//go build -ldflags="-X main.certsDir=/etc/pki/tls/certs -X main.keyDir=/etc/pki/tls/private"
+var (
+	certsDir = "."
+	keyDir   = "."
 )
 
 //struct used in LIST
@@ -53,33 +62,12 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	//Get server cert and key
-	cert, err := tls.LoadX509KeyPair("./server/lc-daemon.crt", "./server/lc-daemon.key")
+
+	config, err := getTLSConfig()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
-	//Get CA for client auth
-	clientPool := x509.NewCertPool()
-	pemCA, err := ioutil.ReadFile("./ca.crt")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	if !clientPool.AppendCertsFromPEM(pemCA) {
-		fmt.Println("Unable to add CA certificate to daemon")
-		os.Exit(1)
-	}
-
-	config := &tls.Config{
-		Certificates:             []tls.Certificate{cert},
-		MinVersion:               tls.VersionTLS12,
-		ClientAuth:               tls.RequireAndVerifyClientCert,
-		ClientCAs:                clientPool,
-		CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384},
-		PreferServerCipherSuites: true}
 	ln, err := tls.Listen("tcp", *listenHostPort, config)
 	if err != nil {
 		fmt.Println(err)
@@ -383,4 +371,59 @@ func parseDisconnectCommand(msg string) (string, error) {
 	}
 
 	return disconnectList[1], nil
+}
+
+func getTLSConfig() (*tls.Config, error) {
+
+	files := [3]string{
+		filepath.Join(keyDir, "vpn-daemon.key"),
+		filepath.Join(certsDir, "vpn-daemon.crt"),
+		filepath.Join(certsDir, "ca.crt")}
+
+	//check if the files exists
+	for _, fileName := range files {
+		if _, err := os.Stat(fileName); err != nil {
+			return nil, fmt.Errorf("Could not find '%s'", fileName)
+		}
+	}
+
+	//get the certificate from the server keypair
+	certDaemon, err := tls.LoadX509KeyPair(files[1], files[0])
+	if err != nil {
+		return nil, fmt.Errorf("Error loading keypair from '%s' and '%s': %s", files[1], files[0], strings.TrimSpace(err.Error()))
+	}
+
+	//get PEM data from CA-certificate file
+	pemCA, err := ioutil.ReadFile(files[2])
+	if err != nil {
+		return nil, fmt.Errorf("Unable to open '%s': %s", files[2], strings.TrimSpace(err.Error()))
+	}
+
+	blockCA, _ := pem.Decode(pemCA)
+	if blockCA == nil {
+		return nil, fmt.Errorf("Failed to decode PEM data from '%s'", files[2])
+	}
+	if blockCA.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("'%s' is not a certificate file", files[2])
+	}
+
+	//get CA certificate
+	certCA, err := x509.ParseCertificate(blockCA.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse CA certificate from '%s'", files[2])
+	}
+
+	//for authenticating clients, only clients with these CA will be allowed to connect
+	clientPool := x509.NewCertPool()
+	clientPool.AddCert(certCA)
+
+	config := &tls.Config{
+		Certificates:             []tls.Certificate{certDaemon},
+		MinVersion:               tls.VersionTLS12,
+		ClientAuth:               tls.RequireAndVerifyClientCert,
+		ClientCAs:                clientPool,
+		CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384},
+		PreferServerCipherSuites: true}
+
+	return config, nil
 }
