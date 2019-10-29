@@ -3,8 +3,8 @@
 ## Version 1
 
 We are currently designing and implementing 
-[LC-daemon](https://github.com/letsconnectvpn/lc-daemon) 1.x. This daemon will 
-be used by the LC portal to talk to the VPN server node(s). In the current 
+[vpn-daemon](https://github.com/letsconnectvpn/vpn-daemon) 1.x. This daemon 
+will be used by the LC portal to talk to the VPN server node(s). In the current 
 situation the VPN portal needs to directly talk to OpenVPN processes on their
 management port to:
 
@@ -20,7 +20,7 @@ This connection between the portal and node(s) takes place over plain TCP. So
 in order for this to be secure between different machines some kind of secure
 network would need to be used. Maybe a VPN? Oh the irony ;-)
 
-In order to solve this problem we are building LC-daemon 1.x to:
+In order to solve this problem we are building vpn-daemon 1.x to:
 
 1. have a single point for the portal to connect to over TCP (or TCP/TLS for
    remote connections);

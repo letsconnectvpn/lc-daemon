@@ -1,11 +1,11 @@
-_bin/lc-daemon: lc-daemon/main.go
-	go build -o $@ lc-daemon/main.go
+_bin/vpn-daemon: vpn-daemon/main.go
+	go build -o $@ vpn-daemon/main.go
 
 fmt:
-	gofmt -s -w lc-daemon/*.go
+	gofmt -s -w vpn-daemon/*.go
 
 test:
-	go test lc-daemon/*.go
+	go test vpn-daemon/*.go
 
 clean:
 	rm -f _bin/*

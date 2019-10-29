@@ -4,10 +4,10 @@
  * To test:
  *
  * vpn-ca init
- * vpn-ca -server lc-daemon
- * vpn-ca -client lc-client
- * ./_bin/lc-daemon &
- * php php/lc-daemon-client.php
+ * vpn-ca -server vpn-daemon
+ * vpn-ca -client vpn-daemon-client
+ * ./_bin/vpn-daemon &
+ * php php/vpn-daemon-client.php
  */
 
 $commandList = [
@@ -24,10 +24,10 @@ $commandList = [
 $streamContext = stream_context_create(
     [
         'ssl' => [
-            'peer_name' => 'lc-daemon',
+            'peer_name' => 'vpn-daemon',
             'cafile' => dirname(__DIR__).'/ca.crt',
-            'local_cert' => dirname(__DIR__).'/client/lc-client.crt',
-            'local_pk' => dirname(__DIR__).'/client/lc-client.key',
+            'local_cert' => dirname(__DIR__).'/client/vpn-daemon-client.crt',
+            'local_pk' => dirname(__DIR__).'/client/vpn-daemon-client.key',
         ],
     ]
 );

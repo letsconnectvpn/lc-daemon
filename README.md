@@ -190,7 +190,7 @@ Response:
 
 ## Build & Run
 
-    $ go build -o _bin/lc-daemon lc-daemon/main.go
+    $ go build -o _bin/vpn-daemon vpn-daemon/main.go
 
 Or use the `Makefile`:
 
@@ -198,7 +198,7 @@ Or use the `Makefile`:
 
 ## Run
 
-    $ _bin/lc-daemon
+    $ _bin/vpn-daemon
 
 On can then telnet to port `41194`, and issue commands:
 
@@ -215,7 +215,7 @@ On can then telnet to port `41194`, and issue commands:
 By default the daemon listens on `localhost:41194`. If you want to modify this
 you can specify the `-listen` option to change this, e.g.:
 
-    $ _bin/lc-daemon -listen 192.168.122.1:41194
+    $ _bin/vpn-daemon -listen 192.168.122.1:41194
 
 ## Test
 
