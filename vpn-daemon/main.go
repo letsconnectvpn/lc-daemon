@@ -32,12 +32,20 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+)
+
+//dir to be used for TLS, can be modified during compile-time with:
+//go build -ldflags="-X main.certsDir=/etc/pki/tls/certs -X main.keyDir=/etc/pki/tls/private"
+var (
+	certsDir = "."
+	keyDir   = "."
 )
 
 //struct used in LIST
@@ -53,38 +61,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	//Get server cert and key
-	cert, err := tls.LoadX509KeyPair("./server/lc-daemon.crt", "./server/lc-daemon.key")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 
-	//Get CA for client auth
-	clientPool := x509.NewCertPool()
-	pemCA, err := ioutil.ReadFile("./ca.crt")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	ln, err := tls.Listen("tcp", *listenHostPort, getTLSConfig())
+	fatalIfError(err)
 
-	if !clientPool.AppendCertsFromPEM(pemCA) {
-		fmt.Println("Unable to add CA certificate to daemon")
-		os.Exit(1)
-	}
-
-	config := &tls.Config{
-		Certificates:             []tls.Certificate{cert},
-		MinVersion:               tls.VersionTLS12,
-		ClientAuth:               tls.RequireAndVerifyClientCert,
-		ClientCAs:                clientPool,
-		CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384},
-		PreferServerCipherSuites: true}
-	ln, err := tls.Listen("tcp", *listenHostPort, config)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -383,4 +363,40 @@ func parseDisconnectCommand(msg string) (string, error) {
 	}
 
 	return disconnectList[1], nil
+}
+
+func getTLSConfig() *tls.Config {
+
+	keyFile := filepath.Join(keyDir, "vpn-daemon.key")
+	certFile := filepath.Join(certsDir, "vpn-daemon.crt")
+	caFile := filepath.Join(certsDir, "ca.crt")
+
+	keyPair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	fatalIfError(err)
+
+	//get PEM data from CA-certificate file
+	pemCA, err := ioutil.ReadFile(caFile)
+	fatalIfError(err)
+
+	//for authenticating clients, only clients with this as CA will be allowed to connect
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(pemCA) {
+		fatalIfError(errors.New("Unable to append the CA PEM to the CA-pool"))
+	}
+
+	config := &tls.Config{
+		Certificates: []tls.Certificate{keyPair},
+		MinVersion:   tls.VersionTLS12,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    caPool,
+		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384}}
+
+	return config
+}
+
+func fatalIfError(err error) {
+	if err != nil {
+		fmt.Printf("ERROR: %s\n", err)
+		os.Exit(1)
+	}
 }
