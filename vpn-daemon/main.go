@@ -26,7 +26,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -63,16 +62,9 @@ func main() {
 	}
 	flag.Parse()
 
-	config, err := getTLSConfig()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	ln, err := tls.Listen("tcp", *listenHostPort, config)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	ln, err := tls.Listen("tcp", *listenHostPort, getTLSConfig())
+	fatalIfError(err)
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -373,57 +365,38 @@ func parseDisconnectCommand(msg string) (string, error) {
 	return disconnectList[1], nil
 }
 
-func getTLSConfig() (*tls.Config, error) {
+func getTLSConfig() *tls.Config {
 
-	files := [3]string{
-		filepath.Join(keyDir, "vpn-daemon.key"),
-		filepath.Join(certsDir, "vpn-daemon.crt"),
-		filepath.Join(certsDir, "ca.crt")}
+	keyFile := filepath.Join(keyDir, "vpn-daemon.key")
+	certFile := filepath.Join(certsDir, "vpn-daemon.crt")
+	caFile := filepath.Join(certsDir, "ca.crt")
 
-	//check if the files exists
-	for _, fileName := range files {
-		if _, err := os.Stat(fileName); err != nil {
-			return nil, fmt.Errorf("Could not find '%s'", fileName)
-		}
-	}
-
-	//get the certificate from the server keypair
-	certDaemon, err := tls.LoadX509KeyPair(files[1], files[0])
-	if err != nil {
-		return nil, fmt.Errorf("Error loading keypair from '%s' and '%s': %s", files[1], files[0], strings.TrimSpace(err.Error()))
-	}
+	keyPair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	fatalIfError(err)
 
 	//get PEM data from CA-certificate file
-	pemCA, err := ioutil.ReadFile(files[2])
-	if err != nil {
-		return nil, fmt.Errorf("Unable to open '%s': %s", files[2], strings.TrimSpace(err.Error()))
-	}
+	pemCA, err := ioutil.ReadFile(caFile)
+	fatalIfError(err)
 
-	blockCA, _ := pem.Decode(pemCA)
-	if blockCA == nil {
-		return nil, fmt.Errorf("Failed to decode PEM data from '%s'", files[2])
+	//for authenticating clients, only clients with this as CA will be allowed to connect
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(pemCA) {
+		fatalIfError(errors.New("Unable to append the CA PEM to the CA-pool"))
 	}
-	if blockCA.Type != "CERTIFICATE" {
-		return nil, fmt.Errorf("'%s' is not a certificate file", files[2])
-	}
-
-	//get CA certificate
-	certCA, err := x509.ParseCertificate(blockCA.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse CA certificate from '%s'", files[2])
-	}
-
-	//for authenticating clients, only clients with these CA will be allowed to connect
-	clientPool := x509.NewCertPool()
-	clientPool.AddCert(certCA)
 
 	config := &tls.Config{
-		Certificates:             []tls.Certificate{certDaemon},
-		MinVersion:               tls.VersionTLS12,
-		ClientAuth:               tls.RequireAndVerifyClientCert,
-		ClientCAs:                clientPool,
-		CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_GCM_SHA384},
-		PreferServerCipherSuites: true}
+		Certificates: []tls.Certificate{keyPair},
+		MinVersion:   tls.VersionTLS12,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    caPool,
+		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384}}
 
-	return config, nil
+	return config
+}
+
+func fatalIfError(err error) {
+	if err != nil {
+		fmt.Printf("ERROR: %s\n", err)
+		os.Exit(1)
+	}
 }
