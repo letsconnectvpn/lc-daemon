@@ -46,8 +46,8 @@ var pkiDir = "."
 
 type vpnClientInfo struct {
 	commonName string
-	ipFour     string // XXX use IP type?
-	ipSix      string // XXX use IP type?
+	ipFour     string
+	ipSix      string
 }
 
 func main() {
@@ -158,43 +158,36 @@ func handleClientConnection(clientConnection net.Conn) {
 	}
 }
 
-func getConnection(managementPort int) (net.Conn, error) {
-	// XXX this is all quite ugly with error handling
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", managementPort), time.Second*10)
+func getManagementConnection(managementPort int) (net.Conn, error) {
+	managementConnection, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", managementPort), time.Second*10)
 	if err != nil {
-		// timeout error, port was busy with another connection
-		// the port was not listening for connections
-		// port refused connection
+		// problem establishing connecting (timeout, closed, ...)
+		fmt.Println(fmt.Sprintf("WARNING: %s", err))
 		return nil, err
 	}
 
-	// XXX figure out return value properly
-	//  conn.SetReadDeadline(time.Now().Add(time.Second*3))
-	//    if foo != nil {
-	//        return nil, err
-	//    }
+	// make sure the management connect does not hang forever reading/writing
+	managementConnection.SetReadDeadline(time.Now().Add(time.Second * 3))
 
-	return conn, nil
+	return managementConnection, nil
 }
 
 func disconnectClient(managementPort int, commonNameList []string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	managementConnection, err := getConnection(managementPort)
+	managementConnection, err := getManagementConnection(managementPort)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("WARNING: %s", err))
 		return
 	}
 	defer managementConnection.Close()
 
 	managementPortScanner := bufio.NewScanner(managementConnection)
+	// disconnect all CNs one-by-one
 	for _, commonName := range commonNameList {
-		// send "kill" command
 		fmt.Fprintf(managementConnection, fmt.Sprintf("kill %s\n", commonName))
 		for managementPortScanner.Scan() {
-			// we read until we either get SUCCESS or ERROR
 			text := managementPortScanner.Text()
 			if 0 == strings.Index(text, "ERROR") || 0 == strings.Index(text, "SUCCESS") {
-				// we are done, move on to the next commonName
+				// move on to next CN...
 				break
 			}
 		}
@@ -202,7 +195,7 @@ func disconnectClient(managementPort int, commonNameList []string, wg *sync.Wait
 }
 
 func obtainStatus(managementPort int, c chan []*vpnClientInfo) {
-	managementConnection, err := getConnection(managementPort)
+	managementConnection, err := getManagementConnection(managementPort)
 	if err != nil {
 		c <- []*vpnClientInfo{}
 		return
@@ -210,15 +203,11 @@ func obtainStatus(managementPort int, c chan []*vpnClientInfo) {
 	defer managementConnection.Close()
 
 	vpnClientInfoList := make([]*vpnClientInfo, 0)
-
-	// send "status" command
 	fmt.Fprintf(managementConnection, "status 2\n")
-
 	managementPortScanner := bufio.NewScanner(managementConnection)
 	for managementPortScanner.Scan() {
 		text := managementPortScanner.Text()
 		if 0 == strings.Index(text, "END") {
-			// end reached
 			break
 		}
 		if 0 == strings.Index(text, "CLIENT_LIST") {
@@ -242,7 +231,7 @@ func parseManagementPortList(managementStringPortList []string) ([]int, error) {
 	for _, managementStringPort := range managementStringPortList {
 		uintPort, err := strconv.ParseUint(managementStringPort, 10, 16)
 		if err != nil || uintPort == 0 {
-			return nil, errors.New("INVALID_PARAMETER")
+			return nil, errors.New("INVALID_PORT")
 		}
 
 		managementIntPortList = append(managementIntPortList, int(uintPort))
