@@ -40,9 +40,12 @@ import (
 	"time"
 )
 
-// the CA and server certificate are stored in "pkiDir", the private key is
-// stored in a sub directory "private"...
-var pkiDir = "."
+// the CA and server certificate are stored in "tlsCertDir", the private key is
+// stored tlsKeyDir
+var (
+	tlsCertDir = "."
+	tlsKeyDir  = "."
+)
 
 type vpnClientInfo struct {
 	commonName string
@@ -241,9 +244,9 @@ func parseManagementPortList(managementStringPortList []string) ([]int, error) {
 }
 
 func getTlsConfig() *tls.Config {
-	caCertFile := filepath.Join(pkiDir, "ca.crt")
-	certFile := filepath.Join(pkiDir, "server.crt")
-	keyFile := filepath.Join(pkiDir, "private", "server.key")
+	caCertFile := filepath.Join(tlsCertDir, "ca.crt")
+	certFile := filepath.Join(tlsCertDir, "server.crt")
+	keyFile := filepath.Join(tlsKeyDir, "server.key")
 
 	keyPair, err := tls.LoadX509KeyPair(certFile, keyFile)
 	fatalIfError(err)

@@ -101,15 +101,6 @@ We can also begin to envision implementing other VPN protocols when we have
 a control daemon, e.g. WireGuard. The daemon would need to have additional 
 commands then, i.e. `setup` and `teardown`.
 
-## Steps
-
-1. Create a socket client that can talk to OpenVPN management port
-2. Implement `kill`
-3. Implement connecting to multiple OpenVPN processes in parallel
-4. Implement daemon and listen on TCP socket and handle commands from daemon
-5. Implement `status`
-6. Implement TLS
-
 ## Daemon API
 
 ### Command / Response
@@ -129,8 +120,8 @@ of the format:
 Where `n` is the number of rows the response contains. This is an integer >= 0. 
 See the examples below.
 
-If a command is not supported, or a command fails the response starts with 
-`ERR`, e.g.:
+If a command is not supported, malformed, or a command fails, the response 
+starts with `ERR`, e.g.:
 
     FOO
     ERR: NOT_SUPPORTED
@@ -168,7 +159,7 @@ management ports.
 
     LIST
 
-    ${CN}(SP)${IPv4}(SP)${IPv6}
+    ${CN} ${IPv4} ${IPv6}
 
 Example:
 
@@ -215,16 +206,21 @@ you can specify the `-listen` option to change this, e.g.:
 
 ### TLS 
 
+We use [vpn-ca](https://git.tuxed.net/LC/vpn-ca) to generate a CA:
+    
+    $ vpn-ca -init
+    $ vpn-ca -server server
+    $ vpn-ca -client client
+
 If you want to enable TLS, i.e. require clients to connect over TLS, start 
 the daemon with the `-enable-tls` flag, e.g.
 
     $ _bin/vpn-daemon -enable-tls
 
-The CA and server certificate need to be installed in the current directory,
-the private key in the `private` subdirectory. You can change the path by 
-compiling with flags, e.g.:
+If you want to change the path where the CA, certificate and key are located, 
+you can recompile the daemon with flags, e.g.:
 
-    $ go build -o _bin/vpn-daemon -ldflags="-X main.pkiDir=/etc/pki/vpn-daemon vpn-daemon/main.go
+    $ go build -o _bin/vpn-daemon -ldflags="-X main.tlsCertDir=/path/to/cert -X main.tlsKeyDir=/path/to/key" vpn-daemon/main.go
 
 ## Test
 
