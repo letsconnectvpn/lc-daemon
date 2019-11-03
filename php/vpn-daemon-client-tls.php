@@ -4,8 +4,11 @@
  * To test:
  *
  * make
+ * vpn-ca init
+ * vpn-ca -server vpn-daemon
+ * vpn-ca -client vpn-daemon-client
  * ./_bin/vpn-daemon &
- * php php/vpn-daemon-client.php
+ * php php/vpn-daemon-client-tls.php
  */
 
 $commandList = [
@@ -15,7 +18,20 @@ $commandList = [
     'QUIT',
 ];
 
-$socket = stream_socket_client('tcp://localhost:41194');
+// @see https://www.php.net/manual/en/context.ssl.php
+// @see https://www.php.net/manual/en/transports.inet.php
+$streamContext = stream_context_create(
+    [
+        'ssl' => [
+            'peer_name' => 'vpn-daemon',
+            'cafile' => dirname(__DIR__).'/ca.crt',
+            'local_cert' => dirname(__DIR__).'/client/vpn-daemon-client.crt',
+            'local_pk' => dirname(__DIR__).'/client/vpn-daemon-client.key',
+        ],
+    ]
+);
+
+$socket = stream_socket_client('ssl://localhost:41194', $errno, $errstr, 5, STREAM_CLIENT_CONNECT, $streamContext);
 
 foreach ($commandList as $cmd) {
     var_dump(sendCommand($socket, $cmd));

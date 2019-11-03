@@ -149,9 +149,9 @@ a subset (just the ones for the profile one is interested in) when calling
 
 ### Disconnect 
 
-`DISCONNECT` will disconnect the mentioned CN.
+`DISCONNECT` will disconnect the mentioned CN(s).
 
-    DISCONNECT <CN>
+    DISCONNECT <CN_1> <CN_2> ... <CN_n>
 
 Example:
 
@@ -159,11 +159,7 @@ Example:
     
 Response:
 
-    OK: 1
-    2
-
-In this case, 2 clients were successfully disconnected. Response can be any 
-integer >= 0.
+    OK: 0
 
 ### List
 
@@ -200,22 +196,35 @@ Or use the `Makefile`:
 
     $ _bin/vpn-daemon
 
-On can then telnet to port `41194`, and issue commands:
+On can then `telnet` to port `41194`, and issue commands:
 
     $ telnet localhost 41194
     Trying ::1...
     Connected to localhost.
     Escape character is '^]'.
-    SET OPENVPN_MANAGEMENT_PORT_LIST 11940 11941
+    SET_PORTS 11940 11941
+    OK: 0
     DISCONNECT foo
-    OK: 1
-    0
+    OK: 0
     QUIT
 
 By default the daemon listens on `localhost:41194`. If you want to modify this
 you can specify the `-listen` option to change this, e.g.:
 
     $ _bin/vpn-daemon -listen 192.168.122.1:41194
+
+### TLS 
+
+If you want to enable TLS, i.e. require clients to connect over TLS, start 
+the daemon with the `-enable-tls` flag, e.g.
+
+    $ _bin/vpn-daemon -enable-tls
+
+The CA and server certificate need to be installed in the current directory,
+the private key in the `private` subdirectory. You can change the path by 
+compiling with flags, e.g.:
+
+    $ go build -o _bin/vpn-daemon -ldflags="-X main.pkiDir=/etc/pki/vpn-daemon vpn-daemon/main.go
 
 ## Test
 

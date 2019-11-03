@@ -34,171 +34,120 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-//dir to be used for TLS, can be modified during compile-time with:
-//go build -ldflags="-X main.certsDir=/etc/pki/tls/certs -X main.keyDir=/etc/pki/tls/private"
-var (
-	certsDir = "."
-	keyDir   = "."
-)
+// the CA and server certificate are stored in "pkiDir", the private key is
+// stored in a sub directory "private"...
+var pkiDir = "."
 
-//struct used in LIST
-type connectionInfo struct {
-	commonName  string
-	virtualIPv4 string
-	virtualIPv6 string
+type vpnClientInfo struct {
+	commonName string
+	ipFour     string // XXX use IP type?
+	ipSix      string // XXX use IP type?
 }
 
 func main() {
-	var listenHostPort = flag.String("listen", "localhost:41194", "IP:port to listen on")
+	var hostPort = flag.String("listen", "127.0.0.1:41194", "IP:port to listen on")
+	var enableTls = flag.Bool("enable-tls", false, "enable TLS")
 	flag.Usage = func() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	ln, err := tls.Listen("tcp", *listenHostPort, getTLSConfig())
+	clientListener, err := getClientListener(*enableTls, *hostPort)
 	fatalIfError(err)
 
 	for {
-		conn, err := ln.Accept()
+		clientConnection, err := clientListener.Accept()
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println(fmt.Sprintf("ERROR: %s", err))
 			continue
 		}
-		go handleConnection(conn)
+
+		go handleClientConnection(clientConnection)
 	}
 }
 
-func handleConnection(conn net.Conn) {
-	defer conn.Close()
+func getClientListener(enableTls bool, hostPort string) (net.Listener, error) {
+	if enableTls {
+		return tls.Listen("tcp", hostPort, getTLSConfig())
+	}
 
-	intPortList := make([]int, 0)
+	return net.Listen("tcp", hostPort)
+}
 
-	reader := bufio.NewReader(conn)
-	writer := bufio.NewWriter(conn)
+func handleClientConnection(clientConnection net.Conn) {
+	defer clientConnection.Close()
 
-	for {
-		msg, err := reader.ReadString('\n')
-		if err != nil {
-			// unable to read string, possibly the client left
-			return
-		}
-		if 0 == strings.Index(msg, "SET_PORTS") {
-			fmt.Println("SET_PORTS")
-			newPortList, err := parsePortCommand(msg)
+	managementIntPortList := []int{}
+	setPortsRegExp := regexp.MustCompile(`^SET_PORTS [0-9]+( [0-9]+)*$`)
+	disconnectRegExp := regexp.MustCompile(`^DISCONNECT [a-zA-Z0-9-.]+( [a-zA-Z0-9-.]+)*$`)
+	writer := bufio.NewWriter(clientConnection)
+	scanner := bufio.NewScanner(clientConnection)
+
+	for scanner.Scan() {
+		text := scanner.Text()
+		fmt.Println(fmt.Sprintf("DEBUG: %s", text))
+
+		// SET_PORTS
+		if setPortsRegExp.MatchString(text) {
+			parsedPortList, err := parseManagementPortList(strings.Fields(text)[1:])
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
 				writer.Flush()
 				continue
 			}
 
-			intPortList = newPortList
+			managementIntPortList = parsedPortList
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			continue
 		}
 
-		if 0 == strings.Index(msg, "DISCONNECT") {
-			fmt.Println("DISCONNECT")
-			commonName, err := parseDisconnectCommand(msg)
-			if err != nil {
-				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
-				writer.Flush()
-				continue
+		// DISCONNECT
+		if disconnectRegExp.MatchString(text) {
+			commonNameList := strings.Fields(text)[1:]
+			var wg sync.WaitGroup
+			for _, managementIntPort := range managementIntPortList {
+				wg.Add(1)
+				go disconnectClient(managementIntPort, commonNameList, &wg)
 			}
-
-			c := make(chan int, len(intPortList))
-			var wgDisc sync.WaitGroup
-
-			for _, p := range intPortList {
-				wgDisc.Add(1)
-				go disconnectClient(c, p, commonName, &wgDisc)
-			}
-
-			// wait for all routines to finish...
-			wgDisc.Wait()
-
-			// close channel, we do not expect any data anymore, this is needed
-			// because otherwise "range c" below is still waiting for more data on the
-			// channel...
-			close(c)
-
-			// below we basically count all the "trues" in the channel populated by the
-			// routines...
-			clientDisconnectCount := 0
-			for clientDisconnected := range c {
-				clientDisconnectCount += clientDisconnected
-			}
-
-			writer.WriteString(fmt.Sprintf("OK: 1\n"))
-			writer.WriteString(fmt.Sprintf("%d\n", clientDisconnectCount))
+			wg.Wait()
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			continue
 		}
 
-		if 0 == strings.Index(msg, "LIST") {
-			fmt.Println("LIST")
-
-			// we are not interested in the parameters (if they are entered), they are simply disregared here
-			// check if the command is truly "LIST" and not "LIST*"
-			if strings.Fields(msg)[0] != "LIST" {
-				writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
-				writer.Flush()
-				continue
+		// LIST
+		if text == "LIST" {
+			c := make(chan []*vpnClientInfo, len(managementIntPortList))
+			for _, managementIntPort := range managementIntPortList {
+				go obtainStatus(managementIntPort, c)
 			}
 
-			c := make(chan []*connectionInfo, len(intPortList))
-			var wgList sync.WaitGroup
+			vpnClientConnectionCount := 0
+			vpnClientConnectionList := ""
 
-			for _, p := range intPortList {
-				wgList.Add(1)
-				go obtainStatus(c, p, &wgList)
-			}
-
-			// wait for all routines to finish...
-			wgList.Wait()
-
-			// close channel, we do not expect any data anymore, this is needed
-			// because otherwise "range c" below is still waiting for more data on the
-			// channel...
-			close(c)
-
-			connectionCount := 0
-			rtnConnList := ""
-			for connections := range c {
-				if connections != nil {
-					for _, conn := range connections {
-						if conn.commonName != "UNDEF" {
-							connectionCount++
-							rtnConnList = rtnConnList + fmt.Sprintf("%s %s %s\n", conn.commonName, conn.virtualIPv4, conn.virtualIPv6)
-						}
-					}
+			for range managementIntPortList {
+				vpnClientInfoList := <-c
+				for _, vpnClientInfo := range vpnClientInfoList {
+					vpnClientConnectionCount++
+					vpnClientConnectionList += fmt.Sprintf("%s %s %s\n", vpnClientInfo.commonName, vpnClientInfo.ipFour, vpnClientInfo.ipSix)
 				}
 			}
 
-			writer.WriteString(fmt.Sprintf("OK: %d\n", connectionCount))
-			writer.WriteString(rtnConnList)
+			writer.WriteString(fmt.Sprintf("OK: %d\n", vpnClientConnectionCount))
+			writer.WriteString(vpnClientConnectionList)
 			writer.Flush()
 			continue
 		}
 
-		if 0 == strings.Index(msg, "QUIT") {
-			fmt.Println("QUIT")
-
-			// we are not interested in the parameters (if they are entered), they are simply disregared here
-			// check if the command is truly "QUIT" and and not "QUIT*"
-			if strings.Fields(msg)[0] != "QUIT" {
-				writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
-				writer.Flush()
-				continue
-			}
-
+		// QUIT
+		if text == "QUIT" {
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			return
@@ -209,167 +158,106 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func disconnectClient(c chan int, port int, commonName string, wg *sync.WaitGroup) {
-	fmt.Println(fmt.Sprintf("disconnect client on port [%d]", port))
-
-	defer wg.Done()
-
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
+func getConnection(managementPort int) (net.Conn, error) {
+	// XXX this is all quite ugly with error handling
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", managementPort), time.Second*10)
 	if err != nil {
 		// timeout error, port was busy with another connection
 		// the port was not listening for connections
 		// port refused connection
-		c <- 0
-		return
+		return nil, err
 	}
 
-	defer conn.Close()
+	// XXX figure out return value properly
+	//  conn.SetReadDeadline(time.Now().Add(time.Second*3))
+	//    if foo != nil {
+	//        return nil, err
+	//    }
 
-	reader := bufio.NewReader(conn)
-
-	// disconnect the client
-	fmt.Fprintf(conn, fmt.Sprintf("kill %s\n", commonName))
-
-	text, err := "", nil
-	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
-
-	// read till the proper response is found, assuming interleaving does happen
-	for 0 != strings.Index(text, "SUCCESS: common name") && 0 != strings.Index(text, "ERROR: common name") {
-		text, err = reader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("DISCONNECT: Port[%v] %s\n", port, err.Error())
-			c <- 0
-			return
-		}
-	}
-
-	if 0 == strings.Index(text, "SUCCESS") {
-		clientString := regexp.MustCompile(`[0-9]+`).FindString(text[strings.Index(text, ","):])
-		if clientsDisconnected, err := strconv.Atoi(clientString); err == nil {
-			c <- clientsDisconnected
-			return
-		}
-	}
-	c <- 0
+	return conn, nil
 }
 
-func obtainStatus(c chan []*connectionInfo, port int, wg *sync.WaitGroup) {
-	fmt.Println(fmt.Sprintf("Obtain status on port [%d]", port))
-
+func disconnectClient(managementPort int, commonNameList []string, wg *sync.WaitGroup) {
 	defer wg.Done()
-
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second*10)
+	managementConnection, err := getConnection(managementPort)
 	if err != nil {
-		// timeout error, port was busy with another connection
-		// the port was not listening for connections
-		// port refused connection
-		c <- nil
+		fmt.Println(fmt.Sprintf("WARNING: %s", err))
 		return
 	}
+	defer managementConnection.Close()
 
-	defer conn.Close()
-
-	reader := bufio.NewReader(conn)
-
-	// send status command
-	fmt.Fprintf(conn, "status 2\n")
-
-	text, err := "", nil
-	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
-
-	for 0 != strings.Index(text, "CLIENT_LIST") {
-		// walk until we find CLIENT_LIST
-		// exit loop if no clients are found -> if not infinite loop searching for "CLIENT_LIST"
-		if 0 == strings.Index(text, "END") {
-			c <- nil
-			return
-		}
-		text, err = reader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
-			c <- nil
-			return
+	managementPortScanner := bufio.NewScanner(managementConnection)
+	for _, commonName := range commonNameList {
+		// send "kill" command
+		fmt.Fprintf(managementConnection, fmt.Sprintf("kill %s\n", commonName))
+		for managementPortScanner.Scan() {
+			// we read until we either get SUCCESS or ERROR
+			text := managementPortScanner.Text()
+			if 0 == strings.Index(text, "ERROR") || 0 == strings.Index(text, "SUCCESS") {
+				// we are done, move on to the next commonName
+				break
+			}
 		}
 	}
+}
 
-	connections := make([]*connectionInfo, 0)
-	//can continue to iterate through the msg till END is found
-	//can continue even when interleaving msgs are present
-	for 0 != strings.Index(text, "END") {
+func obtainStatus(managementPort int, c chan []*vpnClientInfo) {
+	managementConnection, err := getConnection(managementPort)
+	if err != nil {
+		c <- []*vpnClientInfo{}
+		return
+	}
+	defer managementConnection.Close()
+
+	vpnClientInfoList := make([]*vpnClientInfo, 0)
+
+	// send "status" command
+	fmt.Fprintf(managementConnection, "status 2\n")
+
+	managementPortScanner := bufio.NewScanner(managementConnection)
+	for managementPortScanner.Scan() {
+		text := managementPortScanner.Text()
+		if 0 == strings.Index(text, "END") {
+			// end reached
+			break
+		}
 		if 0 == strings.Index(text, "CLIENT_LIST") {
-			strList := strings.Split(strings.TrimSpace(text), ",")
+			strList := strings.Split(text, ",")
 			//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
 			//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
-			//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Connetected Since (time_t)}
+			//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Connected Since (time_t)}
 			//x[9] = {Username}					x[10]= {Client ID}					x[11]= {Peer ID}
-			newConnection := connectionInfo{strList[1], strList[3], strList[4]}
-			connections = append(connections, &newConnection)
-		}
-		text, err = reader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("LIST: Port[%v] %s\n", port, err.Error())
-			c <- connections
-			return
+			if strList[1] == "UNDEF" {
+				// ignore "UNDEF" clients, they are trying to connect, but
+				// not (yet) connected...
+				continue
+			}
+
+			vpnClientInfoList = append(vpnClientInfoList, &vpnClientInfo{strList[1], strList[3], strList[4]})
 		}
 	}
-	c <- connections
+
+	c <- vpnClientInfoList
 }
 
-func parsePortCommand(msg string) ([]int, error) {
-	// strings.Fields() will handle/remove any whitespace in between other chars incl CRLF/LF
-	portList := strings.Fields(msg)
-	if portList[0] != "SET_PORTS" {
-		return nil, errors.New("NOT_SUPPORTED")
-	}
-
-	if len(portList) == 1 {
-		return nil, errors.New("MISSING_PARAMETER")
-	}
-
-	newPortList := make([]int, 0)
-	for _, port := range portList[1:] {
-		uintPort, err := strconv.ParseUint(port, 10, 16)
+func parseManagementPortList(managementStringPortList []string) ([]int, error) {
+	managementIntPortList := make([]int, 0)
+	for _, managementStringPort := range managementStringPortList {
+		uintPort, err := strconv.ParseUint(managementStringPort, 10, 16)
 		if err != nil || uintPort == 0 {
 			return nil, errors.New("INVALID_PARAMETER")
 		}
 
-		intPort := int(uintPort)
-		i := sort.Search(len(newPortList), func(i int) bool { return newPortList[i] >= intPort })
-		// only add the port if its not there yet, disregard if duplicate is found
-		if i >= len(newPortList) || newPortList[i] != intPort {
-			newPortList = append(newPortList, intPort)
-			sort.Ints(newPortList)
-		}
+		managementIntPortList = append(managementIntPortList, int(uintPort))
 	}
 
-	return newPortList, nil
-}
-
-func parseDisconnectCommand(msg string) (string, error) {
-	// strings.Fields() will handle/remove any whitespace in between other chars incl CRLF/LF
-	disconnectList := strings.Fields(msg)
-	if disconnectList[0] != "DISCONNECT" {
-		return "", errors.New("NOT_SUPPORTED")
-	}
-
-	if len(disconnectList) == 1 {
-		return "", errors.New("MISSING_PARAMETER")
-	}
-
-	//parsing commonName
-	validCommonName := regexp.MustCompile(`^[a-zA-Z0-9-.]+$`)
-	if !validCommonName.MatchString(disconnectList[1]) {
-		return "", errors.New("INVALID_PARAMETER")
-	}
-
-	return disconnectList[1], nil
+	return managementIntPortList, nil
 }
 
 func getTLSConfig() *tls.Config {
-
-	keyFile := filepath.Join(keyDir, "vpn-daemon.key")
-	certFile := filepath.Join(certsDir, "vpn-daemon.crt")
-	caFile := filepath.Join(certsDir, "ca.crt")
+	caFile := filepath.Join(pkiDir, "ca.crt")
+	certFile := filepath.Join(pkiDir, "server.crt")
+	keyFile := filepath.Join(pkiDir, "private", "server.key")
 
 	keyPair, err := tls.LoadX509KeyPair(certFile, keyFile)
 	fatalIfError(err)
@@ -384,14 +272,13 @@ func getTLSConfig() *tls.Config {
 		fatalIfError(errors.New("Unable to append the CA PEM to the CA-pool"))
 	}
 
-	config := &tls.Config{
+	return &tls.Config{
 		Certificates: []tls.Certificate{keyPair},
 		MinVersion:   tls.VersionTLS12,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    caPool,
-		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384}}
-
-	return config
+		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384},
+	}
 }
 
 func fatalIfError(err error) {
