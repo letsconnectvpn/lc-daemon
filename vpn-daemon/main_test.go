@@ -15,7 +15,7 @@ func TestParsePortCommand(t *testing.T) {
 }
 
 func TestParsePortCommandZero(t *testing.T) {
-	exp := errors.New("INVALID_PARAMETER")
+	exp := errors.New("INVALID_PORT")
 	_, got := parseManagementPortList([]string{"0", "11941"})
 	if got.Error() != exp.Error() {
 		t.Errorf("Got: %v, Wanted: %v", got, exp)
@@ -23,7 +23,7 @@ func TestParsePortCommandZero(t *testing.T) {
 }
 
 func TestParsePortCommandPortRange(t *testing.T) {
-	exp := errors.New("INVALID_PARAMETER")
+	exp := errors.New("INVALID_PORT")
 	_, got := parseManagementPortList([]string{"11940", "11941", "65536"})
 	if got.Error() != exp.Error() {
 		t.Errorf("Got: %v, Wanted: %v", got, exp)
