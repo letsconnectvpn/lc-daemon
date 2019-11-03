@@ -252,28 +252,26 @@ func parseManagementPortList(managementStringPortList []string) ([]int, error) {
 }
 
 func getTlsConfig() *tls.Config {
-	caFile := filepath.Join(pkiDir, "ca.crt")
+	caCertFile := filepath.Join(pkiDir, "ca.crt")
 	certFile := filepath.Join(pkiDir, "server.crt")
 	keyFile := filepath.Join(pkiDir, "private", "server.key")
 
 	keyPair, err := tls.LoadX509KeyPair(certFile, keyFile)
 	fatalIfError(err)
 
-	//get PEM data from CA-certificate file
-	pemCA, err := ioutil.ReadFile(caFile)
+	caCertPem, err := ioutil.ReadFile(caCertFile)
 	fatalIfError(err)
 
-	//for authenticating clients, only clients with this as CA will be allowed to connect
-	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM(pemCA) {
-		fatalIfError(errors.New("Unable to append the CA PEM to the CA-pool"))
+	trustedCaPool := x509.NewCertPool()
+	if !trustedCaPool.AppendCertsFromPEM(caCertPem) {
+		fatalIfError(errors.New("unable to add CA certificate to CA pool"))
 	}
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{keyPair},
 		MinVersion:   tls.VersionTLS12,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    caPool,
+		ClientCAs:    trustedCaPool,
 		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384},
 	}
 }
