@@ -74,7 +74,7 @@ func main() {
 
 func getClientListener(enableTls bool, hostPort string) (net.Listener, error) {
 	if enableTls {
-		return tls.Listen("tcp", hostPort, getTLSConfig())
+		return tls.Listen("tcp", hostPort, getTlsConfig())
 	}
 
 	return net.Listen("tcp", hostPort)
@@ -222,18 +222,15 @@ func obtainStatus(managementPort int, c chan []*vpnClientInfo) {
 			break
 		}
 		if 0 == strings.Index(text, "CLIENT_LIST") {
+			// HEADER,CLIENT_LIST,Common Name,Real Address,Virtual Address,
+			//      Virtual IPv6 Address,Bytes Received,Bytes Sent,
+			//      Connected Since,Connected Since (time_t),Username,
+			//      Client ID,Peer ID
 			strList := strings.Split(text, ",")
-			//x[0] = "CLIENT_LIST"				x[1] = {COMMON NAME}				x[2] = {Real Address}
-			//x[3] = {Virtual IPv4 Address}		x[4] = {Virtual IPv6 Address}		x[5] = {Bytes Received}
-			//x[6] = {Bytes Sent}				x[7] = {Connected Since}			x[8] = {Connected Since (time_t)}
-			//x[9] = {Username}					x[10]= {Client ID}					x[11]= {Peer ID}
-			if strList[1] == "UNDEF" {
-				// ignore "UNDEF" clients, they are trying to connect, but
-				// not (yet) connected...
-				continue
+			if strList[1] != "UNDEF" {
+				// only add clients with CN != "UNDEF"
+				vpnClientInfoList = append(vpnClientInfoList, &vpnClientInfo{strList[1], strList[3], strList[4]})
 			}
-
-			vpnClientInfoList = append(vpnClientInfoList, &vpnClientInfo{strList[1], strList[3], strList[4]})
 		}
 	}
 
@@ -254,7 +251,7 @@ func parseManagementPortList(managementStringPortList []string) ([]int, error) {
 	return managementIntPortList, nil
 }
 
-func getTLSConfig() *tls.Config {
+func getTlsConfig() *tls.Config {
 	caFile := filepath.Join(pkiDir, "ca.crt")
 	certFile := filepath.Join(pkiDir, "server.crt")
 	keyFile := filepath.Join(pkiDir, "private", "server.key")
