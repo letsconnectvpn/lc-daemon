@@ -164,12 +164,12 @@ func handleClientConnection(clientConnection net.Conn) {
 func getManagementConnection(managementPort int) (net.Conn, error) {
 	managementConnection, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", managementPort), time.Second*10)
 	if err != nil {
-		// problem establishing connecting (timeout, closed, ...)
+		// problem establishing connection (timeout, closed, ...)
 		fmt.Println(fmt.Sprintf("WARNING: %s", err))
 		return nil, err
 	}
 
-	// make sure the management connect does not hang forever reading/writing
+	// make sure the connection does not hang forever reading/writing
 	managementConnection.SetReadDeadline(time.Now().Add(time.Second * 3))
 
 	return managementConnection, nil
