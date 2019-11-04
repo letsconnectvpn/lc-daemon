@@ -207,7 +207,7 @@ func obtainStatus(managementPort int, vpnClientInfoChannel chan []*vpnClientInfo
 	}
 	defer managementConnection.Close()
 
-	vpnClientInfoList := make([]*vpnClientInfo, 0)
+	vpnClientInfoList := []*vpnClientInfo{}
 	fmt.Fprintf(managementConnection, "status 2\n")
 	managementPortScanner := bufio.NewScanner(managementConnection)
 	for managementPortScanner.Scan() {
@@ -232,7 +232,7 @@ func obtainStatus(managementPort int, vpnClientInfoChannel chan []*vpnClientInfo
 }
 
 func parseManagementPortList(managementStringPortList []string) ([]int, error) {
-	managementIntPortList := make([]int, 0)
+	managementIntPortList := []int{}
 	for _, managementStringPort := range managementStringPortList {
 		uintPort, err := strconv.ParseUint(managementStringPort, 10, 16)
 		if err != nil || uintPort == 0 {
