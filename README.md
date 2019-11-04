@@ -222,6 +222,11 @@ you can recompile the daemon with flags, e.g.:
 
     $ go build -o _bin/vpn-daemon -ldflags="-X main.tlsCertDir=/path/to/cert -X main.tlsKeyDir=/path/to/key" vpn-daemon/main.go
 
+In order to test the connection, you can simply use `openssl` and use it as a
+"telnet" to interact with the daemon:
+
+    $ openssl s_client -connect 127.0.0.1:41194 -cert client.crt -key client.key -CAfile ca.crt
+
 ## Test
 
     $ make test
