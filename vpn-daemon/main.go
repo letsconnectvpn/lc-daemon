@@ -114,6 +114,8 @@ func handleClientConnection(clientConnection net.Conn) {
 		// DISCONNECT
 		if disconnectRegExp.MatchString(text) {
 			commonNameList := strings.Fields(text)[1:]
+			// as "DISCONNECT" has no need to pass information back here, we
+			// use a WaitGroup instead of a channel...
 			var wg sync.WaitGroup
 			for _, managementIntPort := range managementIntPortList {
 				wg.Add(1)
@@ -127,16 +129,16 @@ func handleClientConnection(clientConnection net.Conn) {
 
 		// LIST
 		if text == "LIST" {
-			c := make(chan []*vpnClientInfo, len(managementIntPortList))
+			vpnClientInfoChannel := make(chan []*vpnClientInfo, len(managementIntPortList))
 			for _, managementIntPort := range managementIntPortList {
-				go obtainStatus(managementIntPort, c)
+				go obtainStatus(managementIntPort, vpnClientInfoChannel)
 			}
 
 			vpnClientConnectionCount := 0
 			vpnClientConnectionList := ""
 
 			for range managementIntPortList {
-				vpnClientInfoList := <-c
+				vpnClientInfoList := <-vpnClientInfoChannel
 				for _, vpnClientInfo := range vpnClientInfoList {
 					vpnClientConnectionCount++
 					vpnClientConnectionList += fmt.Sprintf("%s %s %s\n", vpnClientInfo.commonName, vpnClientInfo.ipFour, vpnClientInfo.ipSix)
@@ -197,10 +199,10 @@ func disconnectClient(managementPort int, commonNameList []string, wg *sync.Wait
 	}
 }
 
-func obtainStatus(managementPort int, c chan []*vpnClientInfo) {
+func obtainStatus(managementPort int, vpnClientInfoChannel chan []*vpnClientInfo) {
 	managementConnection, err := getManagementConnection(managementPort)
 	if err != nil {
-		c <- []*vpnClientInfo{}
+		vpnClientInfoChannel <- []*vpnClientInfo{}
 		return
 	}
 	defer managementConnection.Close()
@@ -226,7 +228,7 @@ func obtainStatus(managementPort int, c chan []*vpnClientInfo) {
 		}
 	}
 
-	c <- vpnClientInfoList
+	vpnClientInfoChannel <- vpnClientInfoList
 }
 
 func parseManagementPortList(managementStringPortList []string) ([]int, error) {
