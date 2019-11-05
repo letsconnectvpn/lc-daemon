@@ -1,12 +1,12 @@
-# Let's Connect! Daemon
+# VPN Daemon
 
 ## Version 1
 
 We are currently designing and implementing 
-[vpn-daemon](https://github.com/letsconnectvpn/vpn-daemon) 1.x. This daemon 
-will be used by the LC portal to talk to the VPN server node(s). In the current 
-situation the VPN portal needs to directly talk to OpenVPN processes on their
-management port to:
+[vpn-daemon](https://git.tuxed.net/LC/vpn-daemon) 1.x. This daemon will be used 
+by the VPN Portal to talk to the VPN server node(s). In the current situation 
+the VPN portal needs to directly talk to OpenVPN processes on their management 
+port to:
 
 1. retrieve a list of currently connected clients;
 2. be able disconnect a client
