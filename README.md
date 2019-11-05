@@ -1,34 +1,36 @@
 # VPN Daemon
 
-Simple daemon that provides a TCP socket API protected by TLS as an abstraction 
-on top of the management port of (multiple) OpenVPN server process(es). The API
-exposes functionality to retrieve a list of connected VPN clients and also 
-allows for disconnecting clients.
+VPN Deemon is a simple daemon that provides a TCP socket API protected by TLS 
+as an abstraction on top of the management port of (multiple) OpenVPN server 
+process(es). The API exposes functionality to retrieve a list of connected VPN 
+clients and also allows for disconnecting currently connected clients.
 
 ## Why?
 
-On the VPN server we need to manage multiple OpenVPN processes. Each OpenVPN 
+On a VPN server we need to manage multiple OpenVPN processes. Each OpenVPN 
 process exposes it management interface through a (TCP) socket. This works fine 
-if when the OpenVPN processes and the VPN portal run on the same machine. If 
-both the portal and OpenVPN processes run on different hosts this is not 
-secure as there is no TLS, and inefficient, i.e. we have to query all OpenVPN 
-management ports over the network.
+when the OpenVPN processes and the VPN controller run on the same machine. If 
+both the controller and OpenVPN processes run on different hosts this is not 
+secure as there is no TLS. Furthermore, it is inefficient, i.e. we have to 
+query all OpenVPN management ports over the network for all hosts.
 
 Currently, when using multiple hosts, one MUST have a secure channel between
-the nodes, which is something we do not want to require. A simple TLS channel 
-over the open Internet should be enough.
+the controller and node(s), which is something we do not want to require. A 
+simple TLS channel protected by client certificate authentication over the open 
+Internet should be enough...
 
 This daemon will provide the exact same functionality as the current situation,
-except the portal will talk to only one socket, protected using TLS.
+except the portal will talk to only one socket per VPN node, protected using 
+TLS.
 
 ## How?
 
-What we want to build is a simple daemon that runs on the same node as the 
+What we want to build is a simple daemon that runs on the same system as the 
 OpenVPN processes and is reachable over a TCP socket protected by TLS. The 
 daemon will then take care of contacting the OpenVPN processes through their 
 local management ports and execute the commands. We want to make this 
 "configuration-less", i.e. the daemon should require no additional 
-configuration.
+configuration to make integrating it in the current system as easy as possible.
 
 Currently there are two commands used over the OpenVPN management connection: 
 `status` and `kill` where `status` returns a list of connected clients, and 
@@ -37,38 +39,18 @@ Currently there are two commands used over the OpenVPN management connection:
 In a default installation our VPN server has two OpenVPN processes, so the 
 daemon will need to talk to both OpenVPN processes. The portal can just talk to 
 the daemon and issues a command there. The results will be merged by the 
-daemon. 
+daemon.
 
-Furthermore, we can simplify the API uses to retrieve the list of connected 
+Furthermore, we can simplify the API used to retrieve the list of connected 
 clients and disconnect clients. We will only expose what we explicitly use 
 and need, nothing more.
 
-## Before
+## Architecture
 
-Current situation:
-
-                   .----------------.
-                   | Portal         |
-          .--------|                |------.
-          |        '----------------'      |
-          |                                |
-          |                                |
-          |                                |
-          |                                |
-          |Local/Remote TCP Socket         |Local/Remote TCP Socket
-          |                                |
-          v                                v
-    .----------------.               .----------------.
-    | OpenVPN 1      |               | OpenVPN 2      |
-    |                |               |                |
-    '----------------'               '----------------'
-
-## After
-
-                  .----------------.
-                  | Portal         |
-                  |                |
-                  '----------------'
+                  .---------------------.
+                  | Portal / Controller |
+                  |                     |
+                  '---------------------'
                            |
                            | Local/Remote TCP+TLS Socket
                            v
@@ -88,20 +70,21 @@ Current situation:
 ## Benefits
 
 The daemon will be written in Go, which can handle connections to the OpenVPN
-management port concurrently. It doesn't have to do one after the other as is
-currently the case. This may improve performance.
+management port concurrently. It doesn't have to perform the request one after 
+the other as is currently the case. This may improve performance.
 
 We can use TLS with the daemon and require TLS client certificate 
 authentication. 
 
 The parsing of the OpenVPN "legacy" protocol and merging of the 
-information can be done by the daemon.
+information can be done by the daemon simplifying the implementation of the 
+controller.
 
 We can also begin to envision implementing other VPN protocols when we have
 a control daemon, e.g. WireGuard. The daemon would need to have additional 
 commands then, i.e. `setup` and `teardown`.
 
-## Daemon API
+## API
 
 ### Command / Response
 
@@ -112,8 +95,8 @@ Currently 4 commands are implemented:
 * `LIST`
 * `QUIT`
 
-The commands are given, optionally with parameters, and the response will be 
-of the format:
+The commands are given, some with parameters, and the response will be of the 
+format:
     
     OK: n
 
@@ -128,8 +111,8 @@ starts with `ERR`, e.g.:
 
 ### Setup
 
-As we want to go for "zero configuration", we want the portal to specify which
-OpenVPN management ports we want to talk to.
+As we want to go for "zero configuration", we want the controller to specify 
+which OpenVPN management ports we want to talk to.
 
     SET_PORTS 11940 11941
 
@@ -155,11 +138,8 @@ Response:
 ### List
 
 This will list all currently connected clients to the configured OpenVPN 
-management ports.
-
-    LIST
-
-    ${CN} ${IPv4} ${IPv6}
+management ports. It exposes the `CN` and the IPv4 and IPv6 address assigned
+to the VPN client.
 
 Example:
 
@@ -172,6 +152,8 @@ Response:
     9b8acc27bec2d5beb06c78bcd464d042 10.132.193.3 fd0b:7113:df63:d03c::1001
 
 ### Quit
+
+To close the connection:
 
     QUIT
 
@@ -187,7 +169,7 @@ Or use the `Makefile`:
 
     $ _bin/vpn-daemon
 
-On can then `telnet` to port `41194`, and issue commands:
+One can then `telnet` to port `41194`, and issue commands:
 
     $ telnet localhost 41194
     Trying ::1...
@@ -218,15 +200,17 @@ the daemon with the `-enable-tls` flag, e.g.
     $ _bin/vpn-daemon -enable-tls
 
 If you want to change the path where the CA, certificate and key are located, 
-you can recompile the daemon with flags, e.g.:
+you can recompile the daemon with the flags `tlsCertDir` and `tlsKeyDir`, e.g.:
 
     $ go build -o _bin/vpn-daemon -ldflags="-X main.tlsCertDir=/path/to/cert -X main.tlsKeyDir=/path/to/key" vpn-daemon/main.go
 
-In order to test the connection, you can simply use `openssl` and use it as a
-"telnet" to interact with the daemon:
+In order to test the connection, you can use `openssl` and use it as a "telnet" 
+to interact with the daemon:
 
     $ openssl s_client -connect 127.0.0.1:41194 -cert client.crt -key client.key -CAfile ca.crt
 
 ## Test
+
+To run the test suite:
 
     $ make test
