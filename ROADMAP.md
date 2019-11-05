@@ -1,34 +1,5 @@
 # VPN Daemon
 
-## Version 1
-
-We are currently designing and implementing 
-[vpn-daemon](https://git.tuxed.net/LC/vpn-daemon) 1.x. This daemon will be used 
-by the VPN Portal to talk to the VPN server node(s). In the current situation 
-the VPN portal needs to directly talk to OpenVPN processes on their management 
-port to:
-
-1. retrieve a list of currently connected clients;
-2. be able disconnect a client
-
-There can be multiple OpenVPN processes, with a default deploy there are two 
-VPN processes running on the same machine as the portal. However, it is not 
-unusual for there to be 8 OpenVPN processes per node. Next to this, there can 
-be multiple nodes, each running OpenVPN processes.
-
-This connection between the portal and node(s) takes place over plain TCP. So
-in order for this to be secure between different machines some kind of secure
-network would need to be used. Maybe a VPN? Oh the irony ;-)
-
-In order to solve this problem we are building vpn-daemon 1.x to:
-
-1. have a single point for the portal to connect to over TCP (or TCP/TLS for
-   remote connections);
-2. connect to all OpenVPN processes when disconnecting a client;
-3. retrieve and aggregate all connected clients from all OpenVPN processes.
-
-This will make communication with nodes simpler and increase performance.
-
 ## Version 2
 
 The node(s) themselves _also_ contact the portal when a user connects to the 
