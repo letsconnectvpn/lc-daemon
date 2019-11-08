@@ -188,10 +188,10 @@ func disconnectClient(managementPort int, commonNameList []string, wg *sync.Wait
 	managementPortScanner := bufio.NewScanner(managementConnection)
 	// disconnect all CNs one-by-one
 	for _, commonName := range commonNameList {
-		fmt.Fprintf(managementConnection, fmt.Sprintf("kill %s\n", commonName))
+		fmt.Fprintf(managementConnection, "kill %s\n", commonName)
 		for managementPortScanner.Scan() {
 			text := managementPortScanner.Text()
-			if 0 == strings.Index(text, "ERROR") || 0 == strings.Index(text, "SUCCESS") {
+			if strings.Index(text, "ERROR") == 0 || strings.Index(text, "SUCCESS") == 0 {
 				// move on to next CN...
 				break
 			}
@@ -212,10 +212,10 @@ func obtainStatus(managementPort int, vpnClientInfoChannel chan []*vpnClientInfo
 	managementPortScanner := bufio.NewScanner(managementConnection)
 	for managementPortScanner.Scan() {
 		text := managementPortScanner.Text()
-		if 0 == strings.Index(text, "END") {
+		if strings.Index(text, "END") == 0 {
 			break
 		}
-		if 0 == strings.Index(text, "CLIENT_LIST") {
+		if strings.Index(text, "CLIENT_LIST") == 0 {
 			// HEADER,CLIENT_LIST,Common Name,Real Address,Virtual Address,
 			//      Virtual IPv6 Address,Bytes Received,Bytes Sent,
 			//      Connected Since,Connected Since (time_t),Username,
