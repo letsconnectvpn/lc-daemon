@@ -89,7 +89,7 @@ func handleClientConnection(clientConnection net.Conn) {
 	managementIntPortList := []int{}
 	setPortsRegExp := regexp.MustCompile(`^SET_PORTS [0-9]+( [0-9]+)*$`)
 	disconnectRegExp := regexp.MustCompile(`^DISCONNECT [a-zA-Z0-9-.]+( [a-zA-Z0-9-.]+)*$`)
-	setupRegExp := regexp.MustCompile(`^SETUP ([a-zA-Z0-9-.]+) \[([a-zA-Z0-9-.]*(?:,[a-zA-Z0-9-.]+)*)\]$`)
+	setupRegExp := regexp.MustCompile(`^SETUP_OPENVPN [a-zA-Z0-9-.]+( [a-zA-Z0-9-.]+)*$`)
 	writer := bufio.NewWriter(clientConnection)
 	scanner := bufio.NewScanner(clientConnection)
 
@@ -153,7 +153,9 @@ func handleClientConnection(clientConnection net.Conn) {
 		}
 
 		if setupRegExp.MatchString(text) {
-			commonName, profileList := prepareSetupParameters(setupRegExp.FindStringSubmatch(text)[1:])
+			setupParameters := strings.Fields(text)[1:]
+			commonName := setupParameters[0]
+			profileList := setupParameters[1:]
 
 			cnProfileDir := filepath.Join("./c", commonName)
 			if err := os.RemoveAll(cnProfileDir); err != nil {
@@ -169,7 +171,7 @@ func handleClientConnection(clientConnection net.Conn) {
 				continue
 			}
 
-			if err := os.MkdirAll(cnProfileDir, 0755); err != nil {
+			if err := os.MkdirAll(cnProfileDir, 0711); err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
 				writer.Flush()
 				fmt.Println(err.Error())
@@ -285,16 +287,6 @@ func parseManagementPortList(managementStringPortList []string) ([]int, error) {
 	}
 
 	return managementIntPortList, nil
-}
-
-func prepareSetupParameters(setupStringParameters []string) (string, []string) {
-	commonName := setupStringParameters[0]
-
-	if setupStringParameters[1] == "" {
-		return commonName, []string{}
-	}
-
-	return commonName, strings.Split(setupStringParameters[1], ",")
 }
 
 func getTlsConfig() *tls.Config {
