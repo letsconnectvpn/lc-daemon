@@ -89,7 +89,7 @@ func handleClientConnection(clientConnection net.Conn) {
 	managementIntPortList := []int{}
 	setPortsRegExp := regexp.MustCompile(`^SET_PORTS [0-9]+( [0-9]+)*$`)
 	disconnectRegExp := regexp.MustCompile(`^DISCONNECT [a-zA-Z0-9-.]+( [a-zA-Z0-9-.]+)*$`)
-	setupRegExp := regexp.MustCompile(`^SETUP ([a-zA-Z0-9-.]+) \[([a-zA-Z0-9-.]*(?:,[a-zA-Z0-9-.]+)*)\] (.{15,35})$`)
+	setupRegExp := regexp.MustCompile(`^SETUP ([a-zA-Z0-9-.]+) \[([a-zA-Z0-9-.]*(?:,[a-zA-Z0-9-.]+)*)\]$`)
 	writer := bufio.NewWriter(clientConnection)
 	scanner := bufio.NewScanner(clientConnection)
 
@@ -153,17 +153,11 @@ func handleClientConnection(clientConnection net.Conn) {
 		}
 
 		if setupRegExp.MatchString(text) {
-			commonName, profileList, expireTime, err := prepareSetupParameters(setupRegExp.FindStringSubmatch(text)[1:])
-			if err != nil {
-				writer.WriteString(fmt.Sprintf("ERR: %s\n", err))
-				writer.Flush()
-				fmt.Println(err.Error())
-				continue
-			}
+			commonName, profileList := prepareSetupParameters(setupRegExp.FindStringSubmatch(text)[1:])
 
 			cnProfileDir := filepath.Join("./c", commonName)
-			if err = os.RemoveAll(cnProfileDir); err != nil {
-				writer.WriteString(fmt.Sprintf("ERR: UNABLE_TO_REMOVE_EXISTING_CN_FILES\n"))
+			if err := os.RemoveAll(cnProfileDir); err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
 				writer.Flush()
 				fmt.Println(err.Error())
 				continue
@@ -175,17 +169,15 @@ func handleClientConnection(clientConnection net.Conn) {
 				continue
 			}
 
-			err = os.MkdirAll(cnProfileDir, 0777)
-			if err != nil {
-				writer.WriteString(fmt.Sprintf("ERR: UNABLE_TO_CREATE_CN_DIRECTORY\n"))
+			if err := os.MkdirAll(cnProfileDir, 0755); err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
 				writer.Flush()
 				fmt.Println(err.Error())
 				continue
 			}
 
 			for _, profileName := range profileList {
-				profileFile := filepath.Join(cnProfileDir, profileName)
-				file, err := os.OpenFile(profileFile, os.O_WRONLY|os.O_CREATE, 0644)
+				file, err := os.OpenFile(filepath.Join(cnProfileDir, profileName), os.O_CREATE, 0644)
 				if err != nil {
 					fmt.Println(err.Error())
 					continue
@@ -194,13 +186,6 @@ func handleClientConnection(clientConnection net.Conn) {
 				}
 
 				defer file.Close()
-
-				if _, err = file.WriteString(expireTime.Format(time.RFC3339)); err != nil {
-					fmt.Println(err.Error())
-					continue
-					//XXX return error and delete the file?
-					//for now no errors are returned, files are empty and will not be deleted if error occured
-				}
 			}
 
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
@@ -302,20 +287,14 @@ func parseManagementPortList(managementStringPortList []string) ([]int, error) {
 	return managementIntPortList, nil
 }
 
-func prepareSetupParameters(setupStringParameters []string) (string, []string, time.Time, error) {
+func prepareSetupParameters(setupStringParameters []string) (string, []string) {
 	commonName := setupStringParameters[0]
 
-	//XXX just parse and return string???
-	expireTime, err := time.Parse(time.RFC3339, setupStringParameters[2])
-	if err != nil {
-		return "", nil, time.Now(), errors.New("INVALID_EXPIRETIME_FORMAT")
-	}
-
 	if setupStringParameters[1] == "" {
-		return commonName, []string{}, expireTime, nil
+		return commonName, []string{}
 	}
 
-	return commonName, strings.Split(setupStringParameters[1], ","), expireTime, nil
+	return commonName, strings.Split(setupStringParameters[1], ",")
 }
 
 func getTlsConfig() *tls.Config {
