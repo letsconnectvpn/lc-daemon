@@ -88,11 +88,15 @@ commands then, i.e. `setup` and `teardown`.
 
 ### Command / Response
 
-Currently 4 commands are implemented:
+Currently _n_ commands are implemented:
 
 * `SET_PORTS`
 * `DISCONNECT`
 * `LIST`
+* `SETUP`
+* `CLIENT_CONNECT`
+* `CLIENT_DISCONNECT`
+* `LOG`
 * `QUIT`
 
 The commands are given, some with parameters, and the response will be of the 
@@ -114,7 +118,13 @@ starts with `ERR`, e.g.:
 As we want to go for "zero configuration", we want the controller to specify 
 which OpenVPN management ports we want to talk to.
 
+Example:
+
     SET_PORTS 11940 11941
+
+Response:
+
+    OK: 0
 
 This works well for single profile VPN servers, but if there are multiple 
 profiles involved, one has to specify them all in case of `DISCONNECT`, and 
@@ -138,7 +148,7 @@ Response:
 ### List
 
 This will list all currently connected clients to the configured OpenVPN 
-management ports. It exposes the `CN` and the IPv4 and IPv6 address assigned
+management ports. It exposes the CN and the IPv4 and IPv6 address assigned
 to the VPN client.
 
 Example:
@@ -150,6 +160,112 @@ Response:
     OK: 2
     07d1ccc455a21c2d5ac6068d4af727ca 10.42.42.2 fd00:4242:4242:4242::1000
     9b8acc27bec2d5beb06c78bcd464d042 10.132.193.3 fd0b:7113:df63:d03c::1001
+
+### Setup
+
+This will tell the node which profiles are available for a certain CN. 
+
+Example:
+
+    SETUP 07d1ccc455a21c2d5ac6068d4af727ca profile1 profile2
+
+Response:
+    
+    OK: 0
+
+The example above tells the node that the certificate with CN 
+`07d1ccc455a21c2d5ac6068d4af727ca` has access to the profiles `profile1` and 
+`profile2`.
+
+This generates a file in 
+`/var/lib/vpn-daemon/c/07d1ccc455a21c2d5ac6068d4af727ca` with the content 
+`profile1 profile2`. This will be reviewed by the OpenVPN `--client-connect` 
+script to make sure the CN is allowed to use the profile it wants to use.
+
+As the CN is bound to a certificate that expires, we do not need to record
+when this particular CN is no longer allowed to connect.
+
+**TODO**: how to delete the CN? separate `DELETE` command? Should it 
+be combined with `DISCONNECT`? Should we introduce JSON(-like) syntax to allow
+specifying empty array?
+
+### Client Connect
+
+Example:
+
+    CLIENT_CONNECT profile1 9b8acc27bec2d5beb06c78bcd464d042 10.42.42.42 fd00:4242:4242:4242::1000
+
+Response:
+
+    OK: 0
+
+**TODO**: we need to also get the `time_unix` from the environment on client 
+disconnect as to find the exact log file to write to and be able to match it 
+to disconnect...
+
+### Client Disconnect
+
+    CLIENT_DISCONNECT profile1 9b8acc27bec2d5beb06c78bcd464d042 10.42.42.42 fd00:4242:4242:4242::1000
+
+Response: 
+
+    OK: 0
+
+**TODO**: we need to also get the `time_unix` from the environment on client 
+disconnect as to find the correct log file to write to...
+
+### Log
+
+In order to obtain the log from a node, the LOG call is introduced:
+
+Example:
+
+    LOG 10.42.42.42 2019-01-01T08:00:00+00:00
+
+This would return (if there is a log entry) which CN was connected to the VPN 
+using this IP at the provided time.
+
+Response:
+
+    OK: 1
+    profile1 2019-01-01T08:00:00+00:00 2019-01-01T10:00:00+00:00 9b8acc27bec2d5beb06c78bcd464d042
+
+The log file is obtained from the file system. Log files are created by the
+`CLIENT_CONNECT` and `CLIENT_DISCONNECT` call to the daemon from the OpenVPN 
+`--client-connect` and `--client-disconnect` scripts.
+
+The log files are stored in `/var/log/vpn-daemon`, for example:
+
+    /var/log/vpn-daemon/10.42.42.42/2019-01-01T08:00:00+00:00
+
+This file is created by `CLIENT_CONNECT` after which it contains the profile 
+ID, e.g.:
+
+    profile1
+
+On `CLIENT_DISCONNECT` in addition the disconnect time and the total number 
+of bytes will be added to it, e.g.:
+
+    profile1 2019-01-01T10:00:00+00:00 10485760
+
+The daemon needs to be smart enough to find the correct file to look in when 
+the query comes in. The specified time MUST be between the time 
+specified in the file name and the time of disconnect mentioned in the file. It 
+is also possible no disconnect info available (yet), for example the client is
+still connected, or the OpenVPN process crashed.
+
+A cleanup script MUST remove the log files after a specified time frame has 
+passed, e.g. 30 days.
+
+**TODO**: clean up this mess :-) There must be a slightly better way?
+**TODO**: write more about client still connected and crashing OpenVPN process
+**TODO**: log also needs to contain the profile ID, and also MUST return this,
+e.g. profile,CN
+**TODO**: we can have separate log files for IPv4 and IPv6 if that helps, 
+probably...
+**TODO**: could something like logrotate take care of the log file removal?
+**TODO**: the formats are getting a bit more tricky, this almost asks for JSON,
+resist as long as possible ;-)
 
 ### Quit
 
