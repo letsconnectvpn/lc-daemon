@@ -179,8 +179,8 @@ The example above tells the node that the certificate with CN
 
 This generates a file in 
 `/var/lib/vpn-daemon/c/07d1ccc455a21c2d5ac6068d4af727ca` with the content 
-`profile1 profile2`. This will be reviewed by the OpenVPN `--client-connect` 
-script to make sure the CN is allowed to use the profile it wants to use.
+`profile1 profile2`. This will be reviewed by the `CLIENT_CONNECT` call to make 
+sure the CN is allowed to use the profile it wants to use.
 
 As the CN is bound to a certificate that expires, we do not need to record
 when this particular CN is no longer allowed to connect.
