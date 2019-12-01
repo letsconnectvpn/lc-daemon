@@ -45,7 +45,7 @@ import (
 var (
 	tlsCertDir = "."
 	tlsKeyDir  = "."
-	dataDir    = "./data"
+	dataDir    = filepath.Join(".", "data")
 )
 
 type vpnClientInfo struct {
