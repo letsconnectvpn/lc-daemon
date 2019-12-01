@@ -41,10 +41,11 @@ import (
 )
 
 // the CA and server certificate are stored in "tlsCertDir", the private key is
-// stored tlsKeyDir
+// stored tlsKeyDir. The application state data is stored in dataDir.
 var (
 	tlsCertDir = "."
 	tlsKeyDir  = "."
+	dataDir    = "./data"
 )
 
 type vpnClientInfo struct {
@@ -89,6 +90,7 @@ func handleClientConnection(clientConnection net.Conn) {
 	managementIntPortList := []int{}
 	setPortsRegExp := regexp.MustCompile(`^SET_PORTS [0-9]+( [0-9]+)*$`)
 	disconnectRegExp := regexp.MustCompile(`^DISCONNECT [a-zA-Z0-9-.]+( [a-zA-Z0-9-.]+)*$`)
+	setupRegExp := regexp.MustCompile(`^SETUP [a-zA-Z0-9-.]+( [a-zA-Z0-9-.]+)*$`)
 	writer := bufio.NewWriter(clientConnection)
 	scanner := bufio.NewScanner(clientConnection)
 
@@ -147,6 +149,51 @@ func handleClientConnection(clientConnection net.Conn) {
 
 			writer.WriteString(fmt.Sprintf("OK: %d\n", vpnClientConnectionCount))
 			writer.WriteString(vpnClientConnectionList)
+			writer.Flush()
+			continue
+		}
+
+		// SETUP
+		if setupRegExp.MatchString(text) {
+			commonName := strings.Fields(text)[1]
+
+			// create the directory that contains all the "CN" files, luckily
+			// if the directory already exists, this call does nothing
+			if nil != os.MkdirAll(filepath.Join(dataDir, "c"), 0700) {
+				writer.WriteString(fmt.Sprintf("ERR: DIR_CREATE_ERROR\n"))
+				writer.Flush()
+				continue
+			}
+
+			// open the file to which to write the list of profiles...
+			// we MUST set the O_TRUNC flag as well to make sure old data does
+			// not remain after the data we write if that happens to be less
+			// than is in the current file...
+			commonNameFile, err := os.OpenFile(filepath.Join(dataDir, "c", commonName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: FILE_OPEN_ERROR\n"))
+				writer.Flush()
+				continue
+			}
+
+			// FIXME: it is ugly to combine again a string that we should
+			// be able to capture from the SETUP command, but how?!
+			_, err = commonNameFile.WriteString(strings.Join(strings.Fields(text)[2:], " "))
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: FILE_WRITE_ERROR\n"))
+				writer.Flush()
+				continue
+			}
+
+			// we cannot defer file closing, as there is no "return" here on
+			// which the Close() could possibly be triggered...
+			if nil != commonNameFile.Close() {
+				writer.WriteString(fmt.Sprintf("ERR: FILE_CLOSE_ERROR\n"))
+				writer.Flush()
+				continue
+			}
+
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
 			continue
 		}
