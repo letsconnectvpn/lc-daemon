@@ -169,7 +169,7 @@ func handleClientConnection(clientConnection net.Conn) {
 			// we MUST set the O_TRUNC flag as well to make sure old data does
 			// not remain after the data we write if that happens to be less
 			// than is in the current file...
-			commonNameFile, err := os.OpenFile(filepath.Join(dataDir, "c", commonName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			commonNameFile, err := os.OpenFile(filepath.Join(dataDir, "c", commonName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: FILE_OPEN_ERROR\n"))
 				writer.Flush()
