@@ -47,25 +47,27 @@ and need, nothing more.
 
 ## Architecture
 
-                  .---------------------.
-                  | Portal / Controller |
-                  |                     |
-                  '---------------------'
-                           |
-                           | Local/Remote TCP+TLS Socket
-                           v
-                  .----------------.
-                  | Daemon         |
-          .-------|                |-------.
-          |       '----------------'       |
-          |                                |
-          |Local TCP Socket                |Local TCP Socket
-          |                                |
-          v                                v
-    .----------------.               .----------------.
-    | OpenVPN 1      |               | OpenVPN 2      |
-    |                |               |                |
-    '----------------'               '----------------'
+                            .-------------.
+                            | Controller  |
+                            | (Portal)    |
+                            '-------------'
+                                   |
+                            TCP+TLS Socket
+                                   |
+                                   v
+                             .-----------.
+                             | Daemon    |
+                       .-----|           |------.
+                       |     |           |      |
+                       |     '-----------'      |
+                       |                        |
+                 TCP Socket                TCP Socket
+                       |                        |
+                       |                        |
+                       v                        v
+                 .---------.               .---------.
+                 | OpenVPN |               | OpenVPN |
+                 '---------'               '---------'
 
 ## Benefits
 
