@@ -26,6 +26,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -53,6 +54,11 @@ type vpnClientInfo struct {
 	commonName string
 	ipFour     string
 	ipSix      string
+}
+
+type commonNameInfo struct {
+	Version     int
+	ProfileList []string
 }
 
 func main() {
@@ -179,9 +185,15 @@ func handleClientConnection(clientConnection net.Conn) {
 				continue
 			}
 
-			// FIXME: it is ugly to combine again a string that we should
-			// be able to capture from the SETUP command, but how?!
-			_, err = commonNameFile.WriteString(strings.Join(strings.Fields(text)[2:], " "))
+			cI := commonNameInfo{1, strings.Fields(text)[2:]}
+			b, err := json.Marshal(cI)
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: JSON_MARSHALL_ERROR\n"))
+				writer.Flush()
+				continue
+			}
+
+			_, err = commonNameFile.Write(b)
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: FILE_WRITE_ERROR\n"))
 				writer.Flush()
