@@ -185,8 +185,8 @@ func handleClientConnection(clientConnection net.Conn) {
 				continue
 			}
 
-			cI := commonNameInfo{1, strings.Fields(text)[2:]}
-			b, err := json.Marshal(cI)
+			commonNameInfo := commonNameInfo{1, strings.Fields(text)[2:]}
+			b, err := json.Marshal(commonNameInfo)
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: JSON_MARSHALL_ERROR\n"))
 				writer.Flush()
