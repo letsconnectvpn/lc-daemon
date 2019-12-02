@@ -30,8 +30,8 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -62,7 +62,9 @@ func main() {
 	flag.Parse()
 
 	clientListener, err := getClientListener(*enableTls, *hostPort)
-	fatalIfError(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	for {
 		clientConnection, err := clientListener.Accept()
@@ -251,14 +253,18 @@ func getTlsConfig() *tls.Config {
 	keyFile := filepath.Join(tlsKeyDir, "server.key")
 
 	keyPair, err := tls.LoadX509KeyPair(certFile, keyFile)
-	fatalIfError(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	caCertPem, err := ioutil.ReadFile(caCertFile)
-	fatalIfError(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	trustedCaPool := x509.NewCertPool()
 	if !trustedCaPool.AppendCertsFromPEM(caCertPem) {
-		fatalIfError(errors.New("unable to add CA certificate to CA pool"))
+		log.Fatal("unable to add CA certificate to CA pool")
 	}
 
 	return &tls.Config{
@@ -267,12 +273,5 @@ func getTlsConfig() *tls.Config {
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    trustedCaPool,
 		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384},
-	}
-}
-
-func fatalIfError(err error) {
-	if err != nil {
-		fmt.Printf("ERROR: %s\n", err)
-		os.Exit(1)
 	}
 }
