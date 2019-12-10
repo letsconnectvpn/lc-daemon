@@ -26,6 +26,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -45,12 +46,28 @@ import (
 var (
 	tlsCertDir = "."
 	tlsKeyDir  = "."
+	dataDir    = filepath.Join(".", "data")
 )
 
 type vpnClientInfo struct {
 	commonName string
 	ipFour     string
 	ipSix      string
+}
+
+type commonNameInfo struct {
+	Version     int
+	ProfileList []string
+}
+
+type clientLogData struct {
+	profileID        string
+	commonName       string
+	timeUnix         int
+	ipFour           net.IP
+	ipSix            net.IP
+	bytesTransferred int
+	timeDuration     int
 }
 
 func main() {
@@ -60,6 +77,13 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	localListener, err := net.Listen("tcp", "127.0.0.1:41195")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go handleLocalListener(localListener)
 
 	clientListener, err := getClientListener(*enableTls, *hostPort)
 	if err != nil {
@@ -274,4 +298,157 @@ func getTlsConfig() *tls.Config {
 		ClientCAs:    trustedCaPool,
 		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384},
 	}
+}
+
+func handleLocalListener(localListener net.Listener) {
+	for {
+		localConnection, err := localListener.Accept()
+		if err != nil {
+			fmt.Println(fmt.Sprintf("ERROR: %s", err))
+			continue
+		}
+
+		go handleLocalConnection(localConnection)
+	}
+}
+
+func handleLocalConnection(localConnection net.Conn) {
+	defer localConnection.Close()
+
+	clientConnectRegExp := regexp.MustCompile(`^CLIENT_CONNECT [a-zA-Z0-9-.]+ [a-zA-Z0-9-.]+ [0-9]+ [0-9-.]+ [a-fA-F0-9-:]+$`)
+	clientDisconnectRegExp := regexp.MustCompile(`^CLIENT_DISCONNECT [a-zA-Z0-9-.]+ [a-zA-Z0-9-.]+ [0-9]+ [0-9-.]+ [a-fA-F0-9-:]+ [0-9]+ [0-9]+ [0-9]+$`)
+	writer := bufio.NewWriter(localConnection)
+	scanner := bufio.NewScanner(localConnection)
+
+	for scanner.Scan() {
+		text := scanner.Text()
+		fmt.Println(fmt.Sprintf("DEBUG: %s", text))
+
+		// CLIENT_CONNECT
+		// `CLIENT_CONNECT Profile1 9b8acc27bec2d5beb06c78bcd464d042 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000`
+		if clientConnectRegExp.MatchString(text) {
+			clientData, err := parseClientParameters(strings.Fields(text)[1:])
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
+				writer.Flush()
+				continue
+			}
+
+			jsonBytes, err := ioutil.ReadFile(filepath.Join(dataDir, "c", clientData.commonName))
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
+				writer.Flush()
+				continue
+			}
+
+			if !json.Valid(jsonBytes) {
+				writer.WriteString(fmt.Sprintf("ERR: FILE_%s_CONTAINS_INVALID_FORMAT\n", clientData.commonName))
+				writer.Flush()
+				continue
+			}
+
+			var commonNameJSON commonNameInfo
+			err = json.Unmarshal(jsonBytes, &commonNameJSON)
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: UNABLE_TO_UNMARSHAL_JSON_FILE_%s\n", clientData.commonName))
+				writer.Flush()
+				continue
+			}
+
+			if !valueExistsInArray(commonNameJSON.ProfileList, clientData.profileID) {
+				writer.WriteString(fmt.Sprintf("ERR: NOT_ALLOWED_TO_CONNECT_TO_%s\n", clientData.profileID))
+				writer.Flush()
+				continue
+			}
+
+			//start logging
+
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			writer.Flush()
+			continue
+		}
+
+		// CLIENT_DISCONNECT
+		// `CLIENT_DISCONNECT Profile1 9b8acc27bec2d5beb06c78bcd464d042 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000 605666 9777056 120`
+		if clientDisconnectRegExp.MatchString(text) {
+			clientData, err := parseClientParameters(strings.Fields(text)[1:])
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
+				writer.Flush()
+				continue
+			}
+
+			//start logging
+
+			writer.WriteString(fmt.Sprintf("OK: 0\n"))
+			writer.Flush()
+			continue
+		}
+
+		writer.WriteString(fmt.Sprintf("ERR: NOT_SUPPORTED\n"))
+		writer.Flush()
+	}
+}
+
+func parseClientParameters(parameterStringList []string) (*clientLogData, error) {
+	if len(parameterStringList) != 5 && len(parameterStringList) != 8 {
+		return nil, fmt.Errorf("INVALID_PARAMETERS")
+	}
+
+	var clientData clientLogData
+	clientData.profileID = parameterStringList[0]
+	clientData.commonName = parameterStringList[1]
+
+	timeUint, err := strconv.ParseUint(parameterStringList[2], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("INVALID_TIMEUNIX_`%s`", parameterStringList[2])
+	}
+	clientData.timeUnix = int(timeUint)
+
+	ip4 := net.ParseIP(parameterStringList[3])
+	if ip4 == nil {
+		return nil, fmt.Errorf("INVALID_IP4_`%s`", parameterStringList[3])
+	}
+	clientData.ipFour = ip4
+
+	ip6 := net.ParseIP(parameterStringList[4])
+	if ip6 == nil {
+		return nil, fmt.Errorf("INVALID_IP6_`%s`", parameterStringList[4])
+	}
+	clientData.ipSix = ip6
+
+	// Return for client_connect
+	if len(parameterStringList) == 5 {
+		return &clientData, nil
+	}
+
+	bytesReceivedUint, err := strconv.ParseUint(parameterStringList[5], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("INVALID_BYTES_RECEIVED_`%s`", parameterStringList[5])
+	}
+
+	bytesSentUint, err := strconv.ParseUint(parameterStringList[6], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("INVALID_BYTES_SENT_`%s`", parameterStringList[6])
+	}
+
+	clientData.bytesTransferred = int(bytesReceivedUint) + int(bytesSentUint)
+
+	timeDurationUint, err := strconv.ParseUint(parameterStringList[7], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("INVALID_BYTES_SENT_`%s`", parameterStringList[7])
+	}
+	clientData.timeDuration = int(timeDurationUint)
+
+	return &clientData, nil
+}
+
+func valueExistsInArray(array []string, value string) bool {
+	for _, item := range array {
+		if item == value {
+			return true
+		}
+	}
+
+	return false
 }
