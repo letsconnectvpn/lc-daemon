@@ -33,6 +33,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -47,6 +48,7 @@ var (
 	tlsCertDir = "."
 	tlsKeyDir  = "."
 	dataDir    = filepath.Join(".", "data")
+	logDir     = filepath.Join(".", "log")
 )
 
 type vpnClientInfo struct {
@@ -64,8 +66,8 @@ type clientLogData struct {
 	profileID        string
 	commonName       string
 	timeUnix         int
-	ipFour           net.IP
-	ipSix            net.IP
+	ipFour           string
+	ipSix            string
 	bytesTransferred int
 	timeDuration     int
 }
@@ -361,7 +363,12 @@ func handleLocalConnection(localConnection net.Conn) {
 				continue
 			}
 
-			//start logging
+			err = connectLogTransaction(clientData)
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: \n", err.Error()))
+				writer.Flush()
+				continue
+			}
 
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
@@ -409,16 +416,18 @@ func parseClientParameters(parameterStringList []string) (*clientLogData, error)
 	if ip4 == nil {
 		return nil, fmt.Errorf("INVALID_IP4_`%s`", parameterStringList[3])
 	}
-	clientData.ipFour = ip4
+	clientData.ipFour = ip4.String()
 
 	ip6 := net.ParseIP(parameterStringList[4])
 	if ip6 == nil {
 		return nil, fmt.Errorf("INVALID_IP6_`%s`", parameterStringList[4])
 	}
-	clientData.ipSix = ip6
+	clientData.ipSix = ip6.String()
 
 	// Return for client_connect
 	if len(parameterStringList) == 5 {
+		clientData.bytesTransferred = 0
+		clientData.timeDuration = 0
 		return &clientData, nil
 	}
 
@@ -451,4 +460,37 @@ func valueExistsInArray(array []string, value string) bool {
 	}
 
 	return false
+}
+
+func connectLogTransaction(clientLogData *clientLogData) error {
+	b, err := json.Marshal(clientLogData)
+	if err != nil {
+		return errors.New("JSON_MARSHAL_ERROR")
+	}
+
+	if nil != os.MkdirAll(filepath.Join(logDir, clientLogData.ipFour), 0700) {
+		return errors.New("DIR_CREATE_ERROR")
+	}
+
+	fileName := filepath.Join(logDir, clientLogData.ipFour, strconv.Itoa(clientLogData.timeUnix))
+	_, err = os.Stat(fileName)
+	if err == nil {
+		return errors.New("LOG_FILE_ALREADY_EXISTS")
+	}
+
+	logFile, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return errors.New("FILE_CREATE_ERROR")
+	}
+
+	defer logFile.Close()
+
+	_, err = logFile.Write(b)
+	if err != nil {
+		//try to remove the file if writing to file fails
+		_ = os.Remove(fileName)
+		return errors.New("FILE_WRITING_ERROR")
+	}
+
+	return nil
 }
