@@ -63,13 +63,13 @@ type commonNameInfo struct {
 }
 
 type clientLogData struct {
-	profileID        string
-	commonName       string
-	timeUnix         int
-	ipFour           string
-	ipSix            string
-	bytesTransferred int
-	timeDuration     int
+	ProfileID        string
+	CommonName       string
+	TimeUnix         int
+	IPFour           string
+	IPSix            string
+	BytesTransferred int
+	TimeDuration     int
 }
 
 func main() {
@@ -336,15 +336,9 @@ func handleLocalConnection(localConnection net.Conn) {
 				continue
 			}
 
-			jsonBytes, err := ioutil.ReadFile(filepath.Join(dataDir, "c", clientData.commonName))
+			jsonBytes, err := ioutil.ReadFile(filepath.Join(dataDir, "c", clientData.CommonName))
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
-				writer.Flush()
-				continue
-			}
-
-			if !json.Valid(jsonBytes) {
-				writer.WriteString(fmt.Sprintf("ERR: FILE_%s_CONTAINS_INVALID_FORMAT\n", clientData.commonName))
 				writer.Flush()
 				continue
 			}
@@ -352,13 +346,13 @@ func handleLocalConnection(localConnection net.Conn) {
 			var commonNameJSON commonNameInfo
 			err = json.Unmarshal(jsonBytes, &commonNameJSON)
 			if err != nil {
-				writer.WriteString(fmt.Sprintf("ERR: UNABLE_TO_UNMARSHAL_JSON_FILE_%s\n", clientData.commonName))
+				writer.WriteString(fmt.Sprintf("ERR: UNABLE_TO_UNMARSHAL_JSON_FILE_%s\n", clientData.CommonName))
 				writer.Flush()
 				continue
 			}
 
-			if !valueExistsInArray(commonNameJSON.ProfileList, clientData.profileID) {
-				writer.WriteString(fmt.Sprintf("ERR: NOT_ALLOWED_TO_CONNECT_TO_%s\n", clientData.profileID))
+			if !valueExistsInArray(commonNameJSON.ProfileList, clientData.ProfileID) {
+				writer.WriteString(fmt.Sprintf("ERR: NOT_ALLOWED_TO_CONNECT_TO_%s\n", clientData.ProfileID))
 				writer.Flush()
 				continue
 			}
@@ -408,31 +402,31 @@ func parseClientParameters(parameterStringList []string) (*clientLogData, error)
 	}
 
 	var clientData clientLogData
-	clientData.profileID = parameterStringList[0]
-	clientData.commonName = parameterStringList[1]
+	clientData.ProfileID = parameterStringList[0]
+	clientData.CommonName = parameterStringList[1]
 
 	timeUint, err := strconv.ParseUint(parameterStringList[2], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("INVALID_TIMEUNIX_`%s`", parameterStringList[2])
 	}
-	clientData.timeUnix = int(timeUint)
+	clientData.TimeUnix = int(timeUint)
 
 	ip4 := net.ParseIP(parameterStringList[3])
 	if ip4 == nil {
 		return nil, fmt.Errorf("INVALID_IP4_`%s`", parameterStringList[3])
 	}
-	clientData.ipFour = ip4.String()
+	clientData.IPFour = ip4.String()
 
 	ip6 := net.ParseIP(parameterStringList[4])
 	if ip6 == nil {
 		return nil, fmt.Errorf("INVALID_IP6_`%s`", parameterStringList[4])
 	}
-	clientData.ipSix = ip6.String()
+	clientData.IPSix = ip6.String()
 
 	// Return for client_connect
 	if len(parameterStringList) == 5 {
-		clientData.bytesTransferred = 0
-		clientData.timeDuration = 0
+		clientData.BytesTransferred = 0
+		clientData.TimeDuration = 0
 		return &clientData, nil
 	}
 
@@ -446,13 +440,13 @@ func parseClientParameters(parameterStringList []string) (*clientLogData, error)
 		return nil, fmt.Errorf("INVALID_BYTES_SENT_`%s`", parameterStringList[6])
 	}
 
-	clientData.bytesTransferred = int(bytesReceivedUint) + int(bytesSentUint)
+	clientData.BytesTransferred = int(bytesReceivedUint) + int(bytesSentUint)
 
 	timeDurationUint, err := strconv.ParseUint(parameterStringList[7], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("INVALID_BYTES_SENT_`%s`", parameterStringList[7])
 	}
-	clientData.timeDuration = int(timeDurationUint)
+	clientData.TimeDuration = int(timeDurationUint)
 
 	return &clientData, nil
 }
@@ -467,17 +461,17 @@ func valueExistsInArray(array []string, value string) bool {
 	return false
 }
 
-func connectLogTransaction(clientLogData *clientLogData) error {
-	b, err := json.Marshal(clientLogData)
+func connectLogTransaction(LogData *clientLogData) error {
+	b, err := json.Marshal(LogData)
 	if err != nil {
 		return errors.New("JSON_MARSHAL_ERROR")
 	}
 
-	if nil != os.MkdirAll(filepath.Join(logDir, clientLogData.ipFour), 0700) {
+	if nil != os.MkdirAll(filepath.Join(logDir, LogData.IPFour), 0700) {
 		return errors.New("DIR_CREATE_ERROR")
 	}
 
-	fileName := filepath.Join(logDir, clientLogData.ipFour, strconv.Itoa(clientLogData.timeUnix))
+	fileName := filepath.Join(logDir, LogData.IPFour, strconv.Itoa(LogData.TimeUnix))
 	_, err = os.Stat(fileName)
 	if err == nil {
 		return errors.New("LOG_FILE_ALREADY_EXISTS")
@@ -501,7 +495,7 @@ func connectLogTransaction(clientLogData *clientLogData) error {
 }
 
 func disconnectLogTransaction(LogData *clientLogData) error {
-	fileName := filepath.Join(logDir, LogData.ipFour, strconv.Itoa(LogData.timeUnix))
+	fileName := filepath.Join(logDir, LogData.IPFour, strconv.Itoa(LogData.TimeUnix))
 	_, err := os.Stat(fileName)
 	if err != nil {
 		return errors.New("LOGFILE_NOT_ACCESSIBLE")
@@ -512,17 +506,13 @@ func disconnectLogTransaction(LogData *clientLogData) error {
 		return errors.New("UNABLE_TO_READ_LOGFILE")
 	}
 
-	if !json.Valid(jsonBytes) {
-		return errors.New("LOGFILE_CONTAINS_INVALID_FORMAT")
-	}
-
 	var JSONContents clientLogData
 	err = json.Unmarshal(jsonBytes, &JSONContents)
 	if err != nil {
 		return errors.New("UNABLE_TO_UNMARSHAL_LOGFILE")
 	}
 
-	if JSONContents.commonName != LogData.commonName || JSONContents.profileID != LogData.profileID {
+	if JSONContents.CommonName != LogData.CommonName || JSONContents.ProfileID != LogData.ProfileID {
 		return errors.New("CONFLICT_LOGFILE_DISCONNECT-DATA")
 	}
 
