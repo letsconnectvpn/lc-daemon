@@ -365,7 +365,7 @@ func handleLocalConnection(localConnection net.Conn) {
 
 			err = connectLogTransaction(clientData)
 			if err != nil {
-				writer.WriteString(fmt.Sprintf("ERR: \n", err.Error()))
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
 				writer.Flush()
 				continue
 			}
@@ -385,7 +385,12 @@ func handleLocalConnection(localConnection net.Conn) {
 				continue
 			}
 
-			//start logging
+			err = disconnectLogTransaction(clientData)
+			if err != nil {
+				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
+				writer.Flush()
+				continue
+			}
 
 			writer.WriteString(fmt.Sprintf("OK: 0\n"))
 			writer.Flush()
@@ -490,6 +495,52 @@ func connectLogTransaction(clientLogData *clientLogData) error {
 		//try to remove the file if writing to file fails
 		_ = os.Remove(fileName)
 		return errors.New("FILE_WRITING_ERROR")
+	}
+
+	return nil
+}
+
+func disconnectLogTransaction(LogData *clientLogData) error {
+	fileName := filepath.Join(logDir, LogData.ipFour, strconv.Itoa(LogData.timeUnix))
+	_, err := os.Stat(fileName)
+	if err != nil {
+		return errors.New("LOGFILE_NOT_ACCESSIBLE")
+	}
+
+	jsonBytes, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return errors.New("UNABLE_TO_READ_LOGFILE")
+	}
+
+	if !json.Valid(jsonBytes) {
+		return errors.New("LOGFILE_CONTAINS_INVALID_FORMAT")
+	}
+
+	var JSONContents clientLogData
+	err = json.Unmarshal(jsonBytes, &JSONContents)
+	if err != nil {
+		return errors.New("UNABLE_TO_UNMARSHAL_LOGFILE")
+	}
+
+	if JSONContents.commonName != LogData.commonName || JSONContents.profileID != LogData.profileID {
+		return errors.New("CONFLICT_LOGFILE_DISCONNECT-DATA")
+	}
+
+	b, err := json.Marshal(LogData)
+	if err != nil {
+		return errors.New("JSON_MARSHAL_ERROR")
+	}
+
+	logFile, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return errors.New("LOGFILE_OPEN_ERROR")
+	}
+
+	defer logFile.Close()
+
+	_, err = logFile.Write(b)
+	if err != nil {
+		return errors.New("LOGFILE_WRITING_ERROR")
 	}
 
 	return nil
