@@ -306,7 +306,7 @@ func handleLocalListener(localListener net.Listener) {
 	for {
 		localConnection, err := localListener.Accept()
 		if err != nil {
-			fmt.Println(fmt.Sprintf("ERROR: %s", err))
+			log.Printf("ERROR: %s\n", err.Error())
 			continue
 		}
 
@@ -317,6 +317,8 @@ func handleLocalListener(localListener net.Listener) {
 func handleLocalConnection(localConnection net.Conn) {
 	defer localConnection.Close()
 
+	// CLIENT_CONNECT Profile1 9b8acc27bec2d5beb06c78bcd464d042 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000
+	// CLIENT_DISCONNECT Profile1 9b8acc27bec2d5beb06c78bcd464d042 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000 605666 9777056 120
 	clientConnectRegExp := regexp.MustCompile(`^CLIENT_CONNECT [a-zA-Z0-9-.]+ [a-zA-Z0-9-.]+ [0-9]+ [0-9-.]+ [a-fA-F0-9-:]+$`)
 	clientDisconnectRegExp := regexp.MustCompile(`^CLIENT_DISCONNECT [a-zA-Z0-9-.]+ [a-zA-Z0-9-.]+ [0-9]+ [0-9-.]+ [a-fA-F0-9-:]+ [0-9]+ [0-9]+ [0-9]+$`)
 	writer := bufio.NewWriter(localConnection)
@@ -324,10 +326,9 @@ func handleLocalConnection(localConnection net.Conn) {
 
 	for scanner.Scan() {
 		text := scanner.Text()
-		fmt.Println(fmt.Sprintf("DEBUG: %s", text))
+		log.Printf("DEBUG: %s\n", text)
 
 		// CLIENT_CONNECT
-		// `CLIENT_CONNECT Profile1 9b8acc27bec2d5beb06c78bcd464d042 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000`
 		if clientConnectRegExp.MatchString(text) {
 			clientData, err := parseClientParameters(strings.Fields(text)[1:])
 			if err != nil {
@@ -336,23 +337,9 @@ func handleLocalConnection(localConnection net.Conn) {
 				continue
 			}
 
-			jsonBytes, err := ioutil.ReadFile(filepath.Join(dataDir, "c", clientData.CommonName))
+			err = checkClientPermission(clientData)
 			if err != nil {
 				writer.WriteString(fmt.Sprintf("ERR: %s\n", err.Error()))
-				writer.Flush()
-				continue
-			}
-
-			var commonNameJSON commonNameInfo
-			err = json.Unmarshal(jsonBytes, &commonNameJSON)
-			if err != nil {
-				writer.WriteString(fmt.Sprintf("ERR: UNABLE_TO_UNMARSHAL_JSON_FILE_%s\n", clientData.CommonName))
-				writer.Flush()
-				continue
-			}
-
-			if !valueExistsInArray(commonNameJSON.ProfileList, clientData.ProfileID) {
-				writer.WriteString(fmt.Sprintf("ERR: NOT_ALLOWED_TO_CONNECT_TO_%s\n", clientData.ProfileID))
 				writer.Flush()
 				continue
 			}
@@ -370,7 +357,6 @@ func handleLocalConnection(localConnection net.Conn) {
 		}
 
 		// CLIENT_DISCONNECT
-		// `CLIENT_DISCONNECT Profile1 9b8acc27bec2d5beb06c78bcd464d042 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000 605666 9777056 120`
 		if clientDisconnectRegExp.MatchString(text) {
 			clientData, err := parseClientParameters(strings.Fields(text)[1:])
 			if err != nil {
@@ -444,11 +430,29 @@ func parseClientParameters(parameterStringList []string) (*clientLogData, error)
 
 	timeDurationUint, err := strconv.ParseUint(parameterStringList[7], 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("INVALID_BYTES_SENT_`%s`", parameterStringList[7])
+		return nil, fmt.Errorf("INVALID_TIME_DURATION_`%s`", parameterStringList[7])
 	}
 	clientData.TimeDuration = int(timeDurationUint)
 
 	return &clientData, nil
+}
+
+func checkClientPermission(clientData *clientLogData) error {
+	jsonBytes, err := ioutil.ReadFile(filepath.Join(dataDir, "c", clientData.CommonName))
+	if err != nil {
+		return fmt.Errorf("UNABLE_TO_READ_PERMISSIONFILE")
+	}
+
+	var commonNameJSON commonNameInfo
+	err = json.Unmarshal(jsonBytes, &commonNameJSON)
+	if err != nil {
+		return fmt.Errorf("UNABLE_TO_UNMARSHAL_PERMISSIONFILE")
+	}
+
+	if !valueExistsInArray(commonNameJSON.ProfileList, clientData.ProfileID) {
+		return fmt.Errorf("CLIENT_NOT_ALLOWED_TO_CONNECT")
+	}
+	return nil
 }
 
 func valueExistsInArray(array []string, value string) bool {
@@ -495,12 +499,14 @@ func connectLogTransaction(LogData *clientLogData) error {
 }
 
 func disconnectLogTransaction(LogData *clientLogData) error {
+	/*
+		***If the file really does not exist, just create a new file with the updated fields???, no need to search and match the file/contents***
+			_, err := os.Stat(fileName)
+			if err != nil {
+				return errors.New("LOGFILE_NOT_ACCESSIBLE")
+			}
+	*/
 	fileName := filepath.Join(logDir, LogData.IPFour, strconv.Itoa(LogData.TimeUnix))
-	_, err := os.Stat(fileName)
-	if err != nil {
-		return errors.New("LOGFILE_NOT_ACCESSIBLE")
-	}
-
 	jsonBytes, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return errors.New("UNABLE_TO_READ_LOGFILE")
@@ -513,24 +519,24 @@ func disconnectLogTransaction(LogData *clientLogData) error {
 	}
 
 	if JSONContents.CommonName != LogData.CommonName || JSONContents.ProfileID != LogData.ProfileID {
-		return errors.New("CONFLICT_LOGFILE_DISCONNECT-DATA")
+		return errors.New("CONFLICT_LOGFILE_AND_DISCONNECT-DATA")
 	}
 
 	b, err := json.Marshal(LogData)
 	if err != nil {
-		return errors.New("JSON_MARSHAL_ERROR")
+		return errors.New("UNABLE_TO_GET_JSONFORMAT_FROM_DATA")
 	}
 
 	logFile, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
-		return errors.New("LOGFILE_OPEN_ERROR")
+		return errors.New("UNABLE_TO_OPEN_LOGFILE")
 	}
 
 	defer logFile.Close()
 
 	_, err = logFile.Write(b)
 	if err != nil {
-		return errors.New("LOGFILE_WRITING_ERROR")
+		return errors.New("UNABLE_TO_WRITE_LOGFILE")
 	}
 
 	return nil
