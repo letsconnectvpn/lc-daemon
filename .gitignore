@@ -1,2 +1,6 @@
 /_bin
 /data
+/mock/openvpn-sim
+/mock/vpn-daemon
+/mock/data
+

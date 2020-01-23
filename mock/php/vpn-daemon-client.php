@@ -4,38 +4,36 @@
  * To test:
  *
  * make
- * vpn-ca init
- * vpn-ca -server vpn-daemon
- * vpn-ca -client vpn-daemon-client
  * ./_bin/vpn-daemon &
- * php php/vpn-daemon-client-tls.php
+ * php php/vpn-daemon-client.php
  */
 
 $commandList = [
     'SET_PORTS 11940 11941',
     'LIST',
     'DISCONNECT foo bar baz',
+//  'SETUP cn profile1 profile2',
     'QUIT',
 ];
 
-// @see https://www.php.net/manual/en/context.ssl.php
-// @see https://www.php.net/manual/en/transports.inet.php
-$streamContext = stream_context_create(
-    [
-        'ssl' => [
-            'peer_name' => 'vpn-daemon',
-            'cafile' => dirname(__DIR__).'/ca.crt',
-            'local_cert' => dirname(__DIR__).'/client/vpn-daemon-client.crt',
-            'local_pk' => dirname(__DIR__).'/client/vpn-daemon-client.key',
-        ],
-    ]
-);
-
-$socket = stream_socket_client('ssl://localhost:41194', $errno, $errstr, 5, STREAM_CLIENT_CONNECT, $streamContext);
+$socket = stream_socket_client('tcp://localhost:41194');
 
 foreach ($commandList as $cmd) {
     var_dump(sendCommand($socket, $cmd));
 }
+
+/*
+$localCommandList = [
+    'CLIENT_CONNECT profile1 cn 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000'
+    'CLIENT_DISCONNECT profile1 cn 1234567890 10.52.58.2 fdbf:4dff:a892:1572::1000 605666 9777056 120'
+];
+
+$localSocket = stream_socket_client('tcp://localhost:41195');
+
+foreach ($localCommandList as $cmd) {
+    var_dump(sendCommand($localSocket, $cmd));
+}
+*/
 
 function sendCommand($socket, $cmd)
 {
