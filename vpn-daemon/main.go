@@ -223,8 +223,9 @@ func obtainStatus(managementPort int, vpnClientInfoChannel chan []*vpnClientInfo
 			//      Connected Since,Connected Since (time_t),Username,
 			//      Client ID,Peer ID
 			strList := strings.Split(text, ",")
-			if strList[1] != "UNDEF" {
-				// only add clients with CN != "UNDEF"
+			if strList[1] != "UNDEF" && strList[3] != "" && strList[4] != "" {
+				// only add clients with CN != "UNDEF" an IP addresses are not
+				// empty strings...
 				vpnClientInfoList = append(vpnClientInfoList, &vpnClientInfo{strList[1], strList[3], strList[4]})
 			}
 		}
