@@ -48,9 +48,10 @@ var (
 )
 
 type vpnClientInfo struct {
-	commonName string
-	ipFour     string
-	ipSix      string
+	managementIntPort int
+	commonName        string
+	ipFour            string
+	ipSix             string
 }
 
 func main() {
@@ -141,7 +142,7 @@ func handleClientConnection(clientConnection net.Conn) {
 				vpnClientInfoList := <-vpnClientInfoChannel
 				for _, vpnClientInfo := range vpnClientInfoList {
 					vpnClientConnectionCount++
-					vpnClientConnectionList += fmt.Sprintf("%s %s %s\n", vpnClientInfo.commonName, vpnClientInfo.ipFour, vpnClientInfo.ipSix)
+					vpnClientConnectionList += fmt.Sprintf("%d %s %s %s\n", vpnClientInfo.managementIntPort, vpnClientInfo.commonName, vpnClientInfo.ipFour, vpnClientInfo.ipSix)
 				}
 			}
 
@@ -224,7 +225,7 @@ func obtainStatus(managementPort int, vpnClientInfoChannel chan []*vpnClientInfo
 			if strList[1] != "UNDEF" && strList[3] != "" && strList[4] != "" {
 				// only add clients with CN != "UNDEF" and IP addresses are not
 				// empty strings...
-				vpnClientInfoList = append(vpnClientInfoList, &vpnClientInfo{strList[1], strList[3], strList[4]})
+				vpnClientInfoList = append(vpnClientInfoList, &vpnClientInfo{managementPort, strList[1], strList[3], strList[4]})
 			}
 		}
 	}
