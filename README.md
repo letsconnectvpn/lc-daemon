@@ -138,8 +138,9 @@ Response:
 ### List
 
 This will list all currently connected clients to the configured OpenVPN 
-management ports. It exposes the management port as set by `SET_PORTS`, `CN` 
-and the IPv4 and IPv6 address assigned to the VPN client.
+management ports. It exposes the management port as set by `SET_PORTS` to be 
+able to link client to VPN process, `CN` and the IPv4 and IPv6 address assigned 
+to the VPN client.
 
 Example:
 
