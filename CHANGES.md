@@ -1,5 +1,8 @@
 # ChangeLog
 
+## 1.1.1 (2020-05-01)
+- update `Makefile` to support `install`
+
 ## 1.1.0 (2020-04-16)
 - also return management port when using `LIST` command to be able to link 
   client connections to a particular OpenVPN process
