@@ -200,10 +200,12 @@ the daemon with the `-enable-tls` flag, e.g.
 
     $ _bin/vpn-daemon -enable-tls
 
-If you want to change the path where the CA, certificate and key are located, 
-you can recompile the daemon with the flags `tlsCertDir` and `tlsKeyDir`, e.g.:
+If you want to change the paths where to look for the CA, certificate and key, 
+modify the constants at the top of the source file, e.g.:
 
-    $ go build -o _bin/vpn-daemon -ldflags="-X main.tlsCertDir=/path/to/cert -X main.tlsKeyDir=/path/to/key" vpn-daemon/main.go
+    const tlsCaPath string = "/path/to/ca.crt"
+    const tlsCertPath string = "/path/to/server.crt"
+    const tlsKeyPath string = "/path/to/server.key"
 
 In order to test the connection, you can use `openssl` and use it as a "telnet" 
 to interact with the daemon:

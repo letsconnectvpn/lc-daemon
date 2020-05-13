@@ -32,7 +32,6 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,12 +39,10 @@ import (
 	"time"
 )
 
-// the CA and server certificate are stored in "tlsCertDir", the private key is
-// stored tlsKeyDir
-var (
-	tlsCertDir = "."
-	tlsKeyDir  = "."
-)
+// the full path to the CA, certificate and key files
+const tlsCaPath string = "ca.crt"
+const tlsCertPath string = "server.crt"
+const tlsKeyPath string = "server.key"
 
 type vpnClientInfo struct {
 	managementIntPort int
@@ -248,14 +245,10 @@ func parseManagementPortList(managementStringPortList []string) ([]int, error) {
 }
 
 func getTlsConfig() *tls.Config {
-	caCertFile := filepath.Join(tlsCertDir, "ca.crt")
-	certFile := filepath.Join(tlsCertDir, "server.crt")
-	keyFile := filepath.Join(tlsKeyDir, "server.key")
-
-	keyPair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	keyPair, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
 	fatalIfError(err)
 
-	caCertPem, err := ioutil.ReadFile(caCertFile)
+	caCertPem, err := ioutil.ReadFile(tlsCaPath)
 	fatalIfError(err)
 
 	trustedCaPool := x509.NewCertPool()
