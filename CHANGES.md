@@ -1,5 +1,9 @@
 # ChangeLog
 
+## 1.2.0 (...)
+- allow specifying full path to `tlsCaPath`, `tlsCertPath` and `tlsKeyPath` 
+  isntead of folders allowing for more flexibility and easier packaging
+
 ## 1.1.1 (2020-05-01)
 - update `Makefile` to support `install`
 
