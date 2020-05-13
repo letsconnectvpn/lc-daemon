@@ -1,10 +1,5 @@
 # ChangeLog
 
-## 1.2.0 (...)
-- to make it easier to package vpn-daemon use `const` for `tlsCaPath`, 
-  `tlsCertPath` and `tlsKeyPath` and require patching the Go source if they 
-  need to change from the defaults
-
 ## 1.1.1 (2020-05-01)
 - update `Makefile` to support `install`
 
