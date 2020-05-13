@@ -1,6 +1,6 @@
 # ChangeLog
 
-## 1.2.0 (...)
+## 1.2.0 (2020-05-13)
 - allow specifying full path to `tlsCaPath`, `tlsCertPath` and `tlsKeyPath` 
   isntead of folders allowing for more flexibility and easier packaging
 
