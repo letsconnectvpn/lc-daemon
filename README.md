@@ -1,6 +1,6 @@
 **Summary**: Simple daemon to manage OpenVPN client connections
 
-**Description**: VPN Deemon is a simple daemon that provides a TCP socket API 
+**Description**: VPN Daemon is a simple daemon that provides a TCP socket API 
 protected by TLS as an abstraction on top of the management port of (multiple)
 OpenVPN server process(es). The API exposes functionality to retrieve a list of 
 connected VPN clients and also allows for disconnecting currently connected 
