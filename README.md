@@ -221,8 +221,50 @@ to interact with the daemon:
 
     $ openssl s_client -connect 127.0.0.1:41194 -cert client.crt -key client.key -CAfile ca.crt
 
+## systemd
+
+### CentOS / Fedora
+
+```
+[Unit]
+Description=Daemon to manage OpenVPN processes
+
+[Service]
+Environment=LISTEN=127.0.0.1:41194
+EnvironmentFile=-/etc/sysconfig/vpn-daemon
+ExecStart=/usr/bin/vpn-daemon -listen ${LISTEN} ${ENABLE_TLS}
+Restart=on-failure
+PrivateDevices=yes
+User=vpn-daemon
+Group=vpn-daemon
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Debian
+
+```
+[Unit]
+Description=Daemon to manage OpenVPN processes
+
+[Service]
+Environment=LISTEN=127.0.0.1:41194
+EnvironmentFile=-/etc/default/vpn-daemon
+ExecStart=/usr/bin/vpn-daemon -listen ${LISTEN} ${ENABLE_TLS}
+Restart=on-failure
+PrivateDevices=yes
+User=vpn-daemon
+Group=vpn-daemon
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ## Test
 
 To run the test suite:
 
     $ make test
+    
+
